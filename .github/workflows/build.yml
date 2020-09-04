@@ -38,11 +38,7 @@ jobs:
       - uses: actions-rs/toolchain@v1
         id: rust-toolchain
         with:
-          # normally we would specify a toolchain here, but we have a
-          # rust-toolchain file, so that gets picked up automatically.
-          profile: minimal
-          target: ${{ matrix.target }}
-          override: true
+          toolchain: stable
 
       # cache scoop
       - name: Cache scoop
