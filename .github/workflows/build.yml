@@ -1,0 +1,79 @@
+name: build
+on: [push, pull_request]
+
+jobs:
+  build:
+    name: dist
+    runs-on: '${{ matrix.os }}'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            deps: sudo apt-get install binutils-arm-none-eabi
+          - os: windows-latest
+            deps: |
+              If (-Not (Test-Path "$env:USERPROFILE\scoop\shims")) {
+                Invoke-Expression (New-Object System.Net.WebClient).DownloadString('https://get.scoop.sh')
+              }
+              If (-Not (Test-Path "$env:USERPROFILE\scoop\apps\gcc-arm-none-eabi\9-2020-q2-update")) {
+                Invoke-Expression -Command "$env:USERPROFILE\scoop\shims\scoop bucket add extras"
+                Invoke-Expression -Command "$env:USERPROFILE\scoop\shims\scoop install gcc-arm-none-eabi@9-2020-q2-update"
+              }
+              If (-Not (Test-Path "$env:USERPROFILE\scoop\apps\openssl")) {
+                Invoke-Expression -Command "$env:USERPROFILE\scoop\shims\scoop install openssl"
+              }
+              echo ::add-path::$HOME\scoop\apps\gcc-arm-none-eabi\current\bin
+              echo ::add-path::$HOME\scoop\apps\openssl\current\bin
+
+    steps:
+      - name: Set env
+        # make sure the windows env gets set
+        run: echo "::set-env name=X86_64_PC_WINDOWS_MSVC_OPENSSL_DIR::$HOME\scoop\apps\openssl\current"
+
+      # check out our code
+      - uses: actions/checkout@v2
+
+      # install rust toolchain
+      - uses: actions-rs/toolchain@v1
+        id: rust-toolchain
+        with:
+          # normally we would specify a toolchain here, but we have a
+          # rust-toolchain file, so that gets picked up automatically.
+          profile: minimal
+          target: ${{ matrix.target }}
+          override: true
+
+      # cache scoop
+      - name: Cache scoop
+        uses: actions/cache@v2
+        if: runner.os == 'Windows'
+        with:
+          path: ~/scoop
+          key: scoop@9-2020-q2-update
+
+      # cache the cargo registry & index
+      - name: Cache cargo outputs
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.lock') }}
+
+      # cache our build outputs
+      - name: Cache build outputs
+        uses: actions/cache@v2
+        with:
+          path: |
+            target
+          key: ${{ runner.os }}-build-${{ steps.rust-toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.lock') }}
+
+      # install dependencies
+      - run: '${{ matrix.deps }}'
+
+      # invoke our build
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+

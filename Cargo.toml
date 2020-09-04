@@ -1,0 +1,18 @@
+[package]
+name = "lpc55_support"
+version = "0.1.0"
+authors = ["Laura Abbott <laura@oxide.computer>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+parse_int = "0.4.0"
+serialport = "3.3.0"
+crc-any = "2.3.5"
+packed_struct = "0.3.0"
+packed_struct_codegen = "0.3.0"
+termios = "0.2.2"
+structopt = "0.3.15"
+anyhow = "1.0.32"
+openssl = "0.10.30"
