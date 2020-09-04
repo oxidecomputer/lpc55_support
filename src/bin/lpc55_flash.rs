@@ -29,18 +29,24 @@ enum ISPCommand {
         #[structopt(parse(from_os_str))]
         file: PathBuf,
     },
+    /// Erases all non-secure flash. This MUST be done before writing!
     #[structopt(name = "flash-erase-all")]
     FlashEraseAll,
+    /// Write a file to the CMPA region
     #[structopt(name = "write-cmpa")]
     WriteCMPA {
         #[structopt(parse(from_os_str))]
         file: PathBuf
     },
+    /// Erase the CMPA region (use to boot non-secure binaries again)
+    #[structopt(name = "erase-cmpa")]
+    EraseCMPA
 }
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "isp")]
 struct ISP {
+    /// UART port
     #[structopt(name = "port")]
     port: PathBuf,
     #[structopt(subcommand)]
@@ -119,6 +125,16 @@ fn main() -> Result<()> {
 
             do_isp_write_memory(&mut *port, 0x9e400, bytes)?;
             println!("Write to CMPA done!");
+        }
+        ISPCommand::EraseCMPA => {
+            do_ping(&mut *port)?;
+
+            // Write 512 bytes of zero
+            let bytes = vec![0; 512];
+
+            do_isp_write_memory(&mut *port, 0x9e400, bytes)?;
+            println!("CMPA region erased!");
+            println!("You can now boot unsigned images");
         }
 
     }

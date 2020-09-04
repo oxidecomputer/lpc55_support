@@ -12,7 +12,11 @@ use structopt::StructOpt;
 #[derive(StructOpt)]
 #[structopt(name = "cfpa_setup", max_term_width = 80)]
 struct Args {
+    /// UART port
+    #[structopt(name = "port", parse(from_os_str))]
     isp_port: PathBuf,
+    /// Optional out file for the CFPA region
+    #[structopt(name = "outfile", parse(from_os_str))]
     outfile: Option<PathBuf>,
 }
 
