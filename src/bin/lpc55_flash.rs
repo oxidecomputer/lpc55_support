@@ -41,6 +41,16 @@ enum ISPCommand {
     /// Erase the CMPA region (use to boot non-secure binaries again)
     #[structopt(name = "erase-cmpa")]
     EraseCMPA,
+    /// Save the CMPA region to a file
+    ReadCMPA {
+        #[structopt(parse(from_os_str))]
+        file: PathBuf,
+    },
+    /// Save the CFPA region to a file
+    ReadCFPA {
+        #[structopt(parse(from_os_str))]
+        file: PathBuf,
+    },
 }
 
 #[derive(Debug, StructOpt)]
@@ -135,6 +145,34 @@ fn main() -> Result<()> {
             do_isp_write_memory(&mut *port, 0x9e400, bytes)?;
             println!("CMPA region erased!");
             println!("You can now boot unsigned images");
+        }
+        ISPCommand::ReadCMPA { file } => {
+            do_ping(&mut *port)?;
+
+            let m = do_isp_read_memory(&mut *port, 0x9e400, 512)?;
+
+            let mut out = std::fs::OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .create(true)
+                .open(&file)?;
+
+            out.write(&m)?;
+            println!("CMPA Output written to {:?}", file);
+        }
+        ISPCommand::ReadCFPA { file } => {
+            do_ping(&mut *port)?;
+
+            let m = do_isp_read_memory(&mut *port, 0x9de00, 512)?;
+
+            let mut out = std::fs::OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .create(true)
+                .open(&file)?;
+
+            out.write(&m)?;
+            println!("CFPA Output written to {:?}", file);
         }
     }
 

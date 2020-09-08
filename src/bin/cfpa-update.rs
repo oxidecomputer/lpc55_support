@@ -47,10 +47,13 @@ fn main() -> Result<()> {
     let mut cfpa: CFPAPage = CFPAPage::unpack(&cfpa)?;
 
     // We always need to bump the version
-    cfpa.version = cfpa.version + 1;
+    cfpa.update_version();
 
-    // Ensure the first certificate is valid
-    cfpa.rotkh_revoke.rotk0 = 0x1.into();
+    let mut rkth = RKTHRevoke::new();
+
+    rkth.rotk0 = ROTKeyStatus::Enabled.into();
+
+    cfpa.update_rkth_revoke(rkth);
 
     let mut updated = cfpa.pack();
 
