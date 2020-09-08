@@ -17,10 +17,7 @@ jobs:
 
       - uses: actions-rs/toolchain@v1
         with:
-          # normally we would specify a toolchain here, but we have a
-          # rust-toolchain file, so that gets picked up automatically.
-          profile: minimal
-          override: true
+          toolchain: stable
           components: rustfmt
 
       - name: Run cargo fmt
