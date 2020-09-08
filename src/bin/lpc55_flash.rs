@@ -36,11 +36,11 @@ enum ISPCommand {
     #[structopt(name = "write-cmpa")]
     WriteCMPA {
         #[structopt(parse(from_os_str))]
-        file: PathBuf
+        file: PathBuf,
     },
     /// Erase the CMPA region (use to boot non-secure binaries again)
     #[structopt(name = "erase-cmpa")]
-    EraseCMPA
+    EraseCMPA,
 }
 
 #[derive(Debug, StructOpt)]
@@ -136,7 +136,6 @@ fn main() -> Result<()> {
             println!("CMPA region erased!");
             println!("You can now boot unsigned images");
         }
-
     }
 
     Ok(())
