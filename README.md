@@ -2,7 +2,7 @@
 
 This is a crate for accessing things beyond the LPC55 registers, namely support
 for ISP mode programming and structures for the CMPA and CFPA regions. This
-crate also contains two binaries for working with the LPC55
+crate also contains some binaries for working with the LPC55
 
 ## `lpc55_flash`
 
@@ -56,4 +56,79 @@ FLAGS:
 ARGS:
     <port>       UART port
     <outfile>    Optional out file for the CFPA region
+```
+
+## `lpc55_sign`
+
+Will update a binary image with NXP crc information or RSA signature.
+Currently this only supports a single certificate.
+
+```
+USAGE:
+    lpc55_sign <SUBCOMMAND>
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+SUBCOMMANDS:
+    crc             Generate a non-secure CRC image
+    help            Prints this message or the help of the given subcommand(s)
+    signed-image    Generate a secure saigned image and corresponding CMPA region
+```
+
+### Generating a crc image
+
+CRC images are considered non-secure so make sure the CMPA region is either
+erased or has secure booting turned off.
+
+
+```
+$ ./lpc55_sign crc my_binary.bin my_crc_binary.bin
+```
+
+This can be flashed using your preferred method.
+
+```
+$ ./lpc55_flash /dev/ttyUSB0 write-memory 0x0 my_crc_binary.bin
+If you didn't already erase the flash this operation will fail!
+This operation may take a while
+Write complete!
+```
+
+### Generating a signed image
+
+Make sure you've run `cfpa_update` at least once to mark certificate 0 as valid:
+
+```
+$ ./cfpa_update /dev/ttyUSB0
+Writing updated CFPA region back to the device
+done!
+```
+
+You will need a private key and certificate. NXP expects the certificate
+to have a specific serial number for revoking.
+
+```
+$ ./lpc55_sign signed-image my_binary.bin my_private_key.pem my_cert.der.crt my_signed_image.bin cmpa.bin
+```
+
+The signed binary and CMPA image can be flashed using your preferred method
+
+```
+$ ./lpc55_flash /dev/ttyUSB0 write-cmpa cmpa.bin
+Write to CMPA done!
+$ ./lpc55_flash /dev/ttyUSB0 write-memory 0x0 my_signed_image.bin
+If you didn't already erase the flash this operation will fail!
+This operation may take a while
+Write complete!
+```
+
+If you want to go back to working on unsigned images, write 512 bytes of
+zeros to the CMPA region or just use the flash shortcut
+
+```
+$ ./lpc55_flash /dev/ttyUSB0 erase-cmpa
+CMPA region erased!
+You can now boot unsigned images
 ```
