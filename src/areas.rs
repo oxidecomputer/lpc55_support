@@ -343,7 +343,17 @@ impl CMPAPage {
         // endian for us.
         p.secure_boot_cfg = u32::from_be_bytes(sec_boot_cfg.pack());
 
+        p.enable_debug();
+
         p
+    }
+
+    pub fn enable_debug(&mut self) {
+        self.cc_socu_pin = 0x01FF;
+        self.cc_socu_pin |= !self.cc_socu_pin << 16;
+
+        self.cc_socu_dflt = 0x0000;
+        self.cc_socu_dflt |= !self.cc_socu_dflt << 16;
     }
 }
 
