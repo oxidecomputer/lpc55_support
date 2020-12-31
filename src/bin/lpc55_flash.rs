@@ -1,4 +1,5 @@
 use anyhow::Result;
+use byteorder::ByteOrder;
 use lpc55_support::isp::*;
 use serialport::{DataBits, FlowControl, Parity, SerialPortSettings, StopBits};
 use std::io::{Read, Write};
@@ -51,6 +52,8 @@ enum ISPCommand {
         #[structopt(parse(from_os_str))]
         file: PathBuf,
     },
+    /// Put a minimalist program on to allow attaching via SWD
+    Restore,
 }
 
 #[derive(Debug, StructOpt)]
@@ -173,6 +176,34 @@ fn main() -> Result<()> {
 
             out.write(&m)?;
             println!("CFPA Output written to {:?}", file);
+        }
+        ISPCommand::Restore => {
+            do_ping(&mut *port)?;
+
+            println!("Erasing flash");
+            do_isp_flash_erase_all(&mut *port)?;
+            println!("Erasing done.");
+
+            // we need to fill 0x134 bytes to cover the vector table
+            // plus all interrupts
+            let mut bytes: [u8; 0x134] = [0u8; 0x134];
+
+            // Choose a RAM address for the stack (we shouldn't use the stack
+            // but it should be valid anyway)
+            byteorder::LittleEndian::write_u32(&mut bytes[0x0..0x4], 0x20004000);
+            // Everything else targets the loop to branch instruction at 0x00000130
+            let mut offset = 4;
+            while offset < 0x130 {
+                byteorder::LittleEndian::write_u32(&mut bytes[offset..offset + 4], 0x00000131);
+                offset = offset + 4;
+            }
+            // This is two branch to self instructions
+            byteorder::LittleEndian::write_u32(&mut bytes[0x130..0x134], 0xe7fee7fe);
+
+            println!("Writing bytes");
+            do_isp_write_memory(&mut *port, 0x0, bytes.to_vec())?;
+
+            println!("Restore done! SWD should work now.");
         }
     }
 
