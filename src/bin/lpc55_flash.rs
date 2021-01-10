@@ -110,8 +110,7 @@ fn main() -> Result<()> {
 
             println!("If you didn't already erase the flash this operation will fail!");
             println!("This operation may take a while");
-            let mut infile =
-                std::fs::OpenOptions::new().read(true).open(&file)?;
+            let mut infile = std::fs::OpenOptions::new().read(true).open(&file)?;
 
             let mut bytes = Vec::new();
 
@@ -132,8 +131,7 @@ fn main() -> Result<()> {
         ISPCommand::WriteCMPA { file } => {
             do_ping(&mut *port)?;
 
-            let mut infile =
-                std::fs::OpenOptions::new().read(true).open(&file)?;
+            let mut infile = std::fs::OpenOptions::new().read(true).open(&file)?;
 
             let mut bytes = Vec::new();
 
@@ -193,24 +191,15 @@ fn main() -> Result<()> {
 
             // Choose a RAM address for the stack (we shouldn't use the stack
             // but it should be valid anyway)
-            byteorder::LittleEndian::write_u32(
-                &mut bytes[0x0..0x4],
-                0x20004000,
-            );
+            byteorder::LittleEndian::write_u32(&mut bytes[0x0..0x4], 0x20004000);
             // Everything else targets the loop to branch instruction at 0x00000130
             let mut offset = 4;
             while offset < 0x130 {
-                byteorder::LittleEndian::write_u32(
-                    &mut bytes[offset..offset + 4],
-                    0x00000131,
-                );
+                byteorder::LittleEndian::write_u32(&mut bytes[offset..offset + 4], 0x00000131);
                 offset += 4;
             }
             // This is two branch to self instructions
-            byteorder::LittleEndian::write_u32(
-                &mut bytes[0x130..0x134],
-                0xe7fee7fe,
-            );
+            byteorder::LittleEndian::write_u32(&mut bytes[0x130..0x134], 0xe7fee7fe);
 
             println!("Writing bytes");
             do_isp_write_memory(&mut *port, 0x0, bytes.to_vec())?;

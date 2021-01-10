@@ -286,11 +286,7 @@ fn read_ack(port: &mut dyn serialport::SerialPort) -> Result<()> {
     Ok(())
 }
 
-fn check_crc(
-    frame_bytes: &[u8],
-    response: &[u8],
-    frame: &FramingPacket,
-) -> Result<()> {
+fn check_crc(frame_bytes: &[u8], response: &[u8], frame: &FramingPacket) -> Result<()> {
     let mut crc = CRCu16::crc16xmodem();
     crc.digest(&frame_bytes[..0x4]);
     crc.digest(&frame_bytes[0x6..]);
@@ -331,8 +327,7 @@ fn read_data(port: &mut dyn serialport::SerialPort) -> Result<Vec<u8>> {
     }
 
     cnt = 0;
-    let length: usize =
-        (frame.length_low as usize) | ((frame.length_high as usize) << 8);
+    let length: usize = (frame.length_low as usize) | ((frame.length_high as usize) << 8);
     let mut response = vec![0; length];
 
     while cnt != length {
@@ -347,10 +342,7 @@ fn read_data(port: &mut dyn serialport::SerialPort) -> Result<Vec<u8>> {
 
 // Okay _technically_ the response can return values from get-property but for
 // now just return (). If we _really_ need properties we can add that later
-fn read_response(
-    port: &mut dyn serialport::SerialPort,
-    response_type: ResponseCode,
-) -> Result<()> {
+fn read_response(port: &mut dyn serialport::SerialPort, response_type: ResponseCode) -> Result<()> {
     let mut frame_bytes = vec![0; FramingPacket::packed_bytes()];
     let mut cnt = 0;
 
@@ -370,8 +362,7 @@ fn read_response(
     }
 
     cnt = 0;
-    let length: usize =
-        (frame.length_low as usize) | ((frame.length_high as usize) << 8);
+    let length: usize = (frame.length_low as usize) | ((frame.length_high as usize) << 8);
     let mut response = vec![0; length];
 
     while cnt != length {
@@ -381,8 +372,7 @@ fn read_response(
 
     check_crc(&frame_bytes, &response, &frame)?;
 
-    let command =
-        RawCommand::unpack_from_slice(&response[..RawCommand::packed_bytes()])?;
+    let command = RawCommand::unpack_from_slice(&response[..RawCommand::packed_bytes()])?;
 
     if command.tag != (response_type as u8) {
         return Err(anyhow!(
@@ -394,8 +384,7 @@ fn read_response(
 
     // Consider turning this into a structure maybe?
     let retval = u32::from_le_bytes(
-        response[RawCommand::packed_bytes()..RawCommand::packed_bytes() + 4]
-            .try_into()?,
+        response[RawCommand::packed_bytes()..RawCommand::packed_bytes() + 4].try_into()?,
     );
 
     if retval != 0 {
@@ -420,10 +409,7 @@ fn send_command(
     Ok(())
 }
 
-fn send_data(
-    port: &mut dyn serialport::SerialPort,
-    data: Vec<u8>,
-) -> Result<()> {
+fn send_data(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()> {
     let data = DataPacket::new_data(data);
 
     let data_bytes = data.into_bytes();
@@ -513,9 +499,7 @@ pub fn do_isp_write_memory(
     Ok(())
 }
 
-pub fn do_isp_flash_erase_all(
-    port: &mut dyn serialport::SerialPort,
-) -> Result<()> {
+pub fn do_isp_flash_erase_all(port: &mut dyn serialport::SerialPort) -> Result<()> {
     let mut args: Vec<u32> = Vec::new();
 
     // Erase internal flash
