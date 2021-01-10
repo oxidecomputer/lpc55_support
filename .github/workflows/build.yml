@@ -13,24 +13,14 @@ jobs:
             deps: sudo apt-get install libudev-dev binutils-arm-none-eabi
           - os: windows-latest
             deps: |
-              If (-Not (Test-Path "$env:USERPROFILE\scoop\shims")) {
-                Invoke-Expression (New-Object System.Net.WebClient).DownloadString('https://get.scoop.sh')
-              }
-              If (-Not (Test-Path "$env:USERPROFILE\scoop\apps\gcc-arm-none-eabi\9-2020-q2-update")) {
-                Invoke-Expression -Command "$env:USERPROFILE\scoop\shims\scoop bucket add extras"
-                Invoke-Expression -Command "$env:USERPROFILE\scoop\shims\scoop install gcc-arm-none-eabi@9-2020-q2-update"
-              }
-              If (-Not (Test-Path "$env:USERPROFILE\scoop\apps\openssl")) {
-                Invoke-Expression -Command "$env:USERPROFILE\scoop\shims\scoop install openssl"
-              }
-              echo ::add-path::$HOME\scoop\apps\gcc-arm-none-eabi\current\bin
-              echo ::add-path::$HOME\scoop\apps\openssl\current\bin
+              Invoke-WebRequest -Uri https://github.com/steveklabnik/arm-none-eabi-objcopy/releases/download/9-2020-q2-update/arm-none-eabi-objcopy.exe -OutFile "$Env:RUNNER_TEMP\arm-none-eabi-objcopy.exe"
+              echo $Env:RUNNER_TEMP >> $Env:GITHUB_PATH
+              echo "VCPKG_ROOT=$Env:VCPKG_INSTALLATION_ROOT" >> $Env:GITHUB_ENV
+              vcpkg install openssl:x64-windows
+    env:
+      VCPKGRS_DYNAMIC: 1
 
     steps:
-      - name: Set env
-        # make sure the windows env gets set
-        run: echo "::set-env name=X86_64_PC_WINDOWS_MSVC_OPENSSL_DIR::$HOME\scoop\apps\openssl\current"
-
       # check out our code
       - uses: actions/checkout@v2
 
@@ -40,14 +30,6 @@ jobs:
         with:
           toolchain: stable
 
-      # cache scoop
-      - name: Cache scoop
-        uses: actions/cache@v2
-        if: runner.os == 'Windows'
-        with:
-          path: ~/scoop
-          key: scoop@9-2020-q2-update
-
       # cache the cargo registry & index
       - name: Cache cargo outputs
         uses: actions/cache@v2
@@ -56,6 +38,15 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
           key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache vcpkg
+        uses: actions/cache@v2
+        with:
+          path: C:\vcpkg\downloads
+          key: ${{ runner.os }}-vcpkg-download-${{ matrix.os }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-download-${{ matrix.os }}-
+            ${{ runner.os }}-vcpkg-download-
 
       # cache our build outputs
       - name: Cache build outputs

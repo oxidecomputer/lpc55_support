@@ -1,6 +1,5 @@
 use anyhow::Result;
-use lpc55_support::crc_image;
-use lpc55_support::signed_image;
+use lpc55_support::{crc_image, sign_ecc, signed_image};
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -27,6 +26,15 @@ enum ImageType {
         dest_bin: PathBuf,
         #[structopt(parse(from_os_str))]
         dest_cmpa: PathBuf,
+    },
+    #[structopt(name = "ecc-image")]
+    EccImage {
+        #[structopt(parse(from_os_str))]
+        src_bin: PathBuf,
+        #[structopt(parse(from_os_str))]
+        priv_key: PathBuf,
+        #[structopt(parse(from_os_str))]
+        dest_bin: PathBuf,
     },
 }
 
@@ -57,6 +65,14 @@ fn main() -> Result<()> {
                 "Done! Signed image written to {:?}, CMPA to {:?}",
                 &dest_bin, &dest_cmpa
             );
+        }
+        ImageType::EccImage {
+            src_bin,
+            priv_key,
+            dest_bin,
+        } => {
+            sign_ecc::ecc_sign_image(&src_bin, &priv_key, &dest_bin)?;
+            println!("Done! ECC image written to {:?}", &dest_bin);
         }
     }
 
