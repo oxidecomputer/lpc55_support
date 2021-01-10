@@ -68,13 +68,14 @@ fn main() -> Result<()> {
 
     // The target _technically_ has autobaud but it's very flaky
     // and these seem to be the preferred settings
-    let mut settings: SerialPortSettings = Default::default();
-    settings.timeout = Duration::from_millis(1000);
-    settings.baud_rate = 57600;
-    settings.data_bits = DataBits::Eight;
-    settings.flow_control = FlowControl::None;
-    settings.parity = Parity::None;
-    settings.stop_bits = StopBits::One;
+    let settings = SerialPortSettings {
+        timeout: Duration::from_millis(1000),
+        baud_rate: 57600,
+        data_bits: DataBits::Eight,
+        flow_control: FlowControl::None,
+        parity: Parity::None,
+        stop_bits: StopBits::One,
+    };
 
     let mut port = serialport::open_with_settings(&cmd.port, &settings)?;
 
@@ -98,7 +99,7 @@ fn main() -> Result<()> {
                 .create(true)
                 .open(&path)?;
 
-            out.write(&m)?;
+            out.write_all(&m)?;
             println!("Output written to {:?}", path);
         }
         ISPCommand::WriteMemory { address, file } => {
@@ -106,7 +107,8 @@ fn main() -> Result<()> {
 
             println!("If you didn't already erase the flash this operation will fail!");
             println!("This operation may take a while");
-            let mut infile = std::fs::OpenOptions::new().read(true).open(&file)?;
+            let mut infile =
+                std::fs::OpenOptions::new().read(true).open(&file)?;
 
             let mut bytes = Vec::new();
 
@@ -127,7 +129,8 @@ fn main() -> Result<()> {
         ISPCommand::WriteCMPA { file } => {
             do_ping(&mut *port)?;
 
-            let mut infile = std::fs::OpenOptions::new().read(true).open(&file)?;
+            let mut infile =
+                std::fs::OpenOptions::new().read(true).open(&file)?;
 
             let mut bytes = Vec::new();
 
@@ -157,7 +160,7 @@ fn main() -> Result<()> {
                 .create(true)
                 .open(&file)?;
 
-            out.write(&m)?;
+            out.write_all(&m)?;
             println!("CMPA Output written to {:?}", file);
         }
         ISPCommand::ReadCFPA { file } => {
@@ -171,7 +174,7 @@ fn main() -> Result<()> {
                 .create(true)
                 .open(&file)?;
 
-            out.write(&m)?;
+            out.write_all(&m)?;
             println!("CFPA Output written to {:?}", file);
         }
     }
