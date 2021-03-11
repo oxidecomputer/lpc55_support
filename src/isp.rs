@@ -313,7 +313,7 @@ fn read_data(port: &mut dyn serialport::SerialPort) -> Result<Vec<u8>> {
     let mut cnt = 0;
 
     while cnt != FramingPacket::packed_bytes() {
-        let r = port.read(&mut frame_bytes)?;
+        let r = port.read(&mut frame_bytes[cnt..])?;
         cnt += r;
     }
 
@@ -347,7 +347,7 @@ fn read_response(port: &mut dyn serialport::SerialPort, response_type: ResponseC
     let mut cnt = 0;
 
     while cnt != FramingPacket::packed_bytes() {
-        let r = port.read(&mut frame_bytes)?;
+        let r = port.read(&mut frame_bytes[cnt..])?;
         cnt += r;
     }
 
