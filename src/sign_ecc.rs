@@ -70,7 +70,9 @@ fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Pa
         + cert_header_size
         + (new_cert_header.certificate_table_len as usize);
 
-    let total_len = signed_len + 4 + <ecdsa::SignatureSize<NistP256>>::to_usize();
+    let max_sig_size = ecdsa::asn1::MaxSize::<NistP256>::to_usize();
+
+    let total_len = signed_len + 4 + max_sig_size;
 
     new_cert_header.total_image_len = signed_len.try_into().unwrap();
 
@@ -109,6 +111,8 @@ fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Pa
     let sign_bytes = std::fs::read(outfile_path)?;
     let sig = signing_key.sign(&sign_bytes);
 
+    let sig_len = sig.to_asn1().as_bytes().len();
+
     println!("Image signature {:x?}", sig.to_asn1().as_bytes());
 
     let mut out = OpenOptions::new()
@@ -117,8 +121,12 @@ fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Pa
         .open(outfile_path)?;
     // XXX work out what to do. It seems like this _should_ work without
     // having to go full asn1 but I can't find the functions?
-    out.write_u32::<byteorder::LittleEndian>((sig.to_asn1().as_bytes().len()) as u32)?;
+    out.write_u32::<byteorder::LittleEndian>(sig_len as u32)?;
     out.write_all(sig.to_asn1().as_bytes())?;
+    if max_sig_size - sig_len > 0 {
+        out.write_all(&vec![0; max_sig_size - sig_len])?;
+    }
+
     drop(out);
 
     Ok(())
