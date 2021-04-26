@@ -62,6 +62,11 @@ struct ISP {
     /// UART port
     #[structopt(name = "port")]
     port: PathBuf,
+    /// How fast to run the UART. 57,600 baud seems very reliable but is rather
+    /// slow. In certain test setups we've gotten rates of up to 1Mbaud to work
+    /// reliably -- your mileage may vary!
+    #[structopt(short = "b", default_value = "57600")]
+    baud_rate: u32,
     #[structopt(subcommand)]
     cmd: ISPCommand,
 }
@@ -73,7 +78,7 @@ fn main() -> Result<()> {
     // and these seem to be the preferred settings
     let mut settings: SerialPortSettings = Default::default();
     settings.timeout = Duration::from_millis(1000);
-    settings.baud_rate = 57600;
+    settings.baud_rate = cmd.baud_rate;
     settings.data_bits = DataBits::Eight;
     settings.flow_control = FlowControl::None;
     settings.parity = Parity::None;
