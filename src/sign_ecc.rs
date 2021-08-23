@@ -1,7 +1,8 @@
 use crate::areas::*;
 use anyhow::Result;
 use byteorder::{ByteOrder, WriteBytesExt};
-use ecdsa::generic_array::typenum::Unsigned;
+use elliptic_curve::generic_array::typenum::Unsigned;
+use elliptic_curve::pkcs8::der::Decodable;
 use p256::{
     ecdsa::{signature::Signer, SigningKey, VerifyingKey},
     pkcs8::FromPrivateKey,
@@ -70,7 +71,7 @@ fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Pa
         + cert_header_size
         + (new_cert_header.certificate_table_len as usize);
 
-    let max_sig_size = ecdsa::asn1::MaxSize::<NistP256>::to_usize();
+    let max_sig_size = ecdsa::der::MaxSize::<NistP256>::to_usize();
 
     let total_len = signed_len + 4 + max_sig_size;
 
@@ -111,9 +112,9 @@ fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Pa
     let sign_bytes = std::fs::read(outfile_path)?;
     let sig = signing_key.sign(&sign_bytes);
 
-    let sig_len = sig.to_asn1().as_bytes().len();
+    let sig_len = sig.to_der().as_bytes().len();
 
-    println!("Image signature {:x?}", sig.to_asn1().as_bytes());
+    println!("Image signature {:x?}", sig.to_der().as_bytes());
 
     let mut out = OpenOptions::new()
         .write(true)
@@ -122,7 +123,7 @@ fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Pa
     // XXX work out what to do. It seems like this _should_ work without
     // having to go full asn1 but I can't find the functions?
     out.write_u32::<byteorder::LittleEndian>(sig_len as u32)?;
-    out.write_all(sig.to_asn1().as_bytes())?;
+    out.write_all(sig.to_der().as_bytes())?;
     if max_sig_size - sig_len > 0 {
         out.write_all(&vec![0; max_sig_size - sig_len])?;
     }
