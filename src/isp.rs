@@ -15,7 +15,7 @@ enum StartByte {
 enum PacketType {
     PacketAck = 0xA1,
     //PacketNak = 0xA2,
-    //PacketAckAbort = 0xA3,
+    PacketAckAbort = 0xA3,
     PacketCommand = 0xA4,
     PacketData = 0xA5,
     PacketPing = 0xA6,
@@ -279,6 +279,11 @@ fn read_ack(port: &mut dyn serialport::SerialPort) -> Result<()> {
 
     let ack = PacketHeader::unpack_from_slice(&ack_bytes).unwrap();
 
+    // Ack abort comes with a response packet explaining why
+    if ack.packet_type == (PacketType::PacketAckAbort as u8) {
+        read_response(port, ResponseCode::GenericResponse)?
+    }
+
     if ack.packet_type != (PacketType::PacketAck as u8) {
         return Err(anyhow!("Incorrect ACK byte {:x}", ack.packet_type));
     }
@@ -387,11 +392,13 @@ fn read_response(port: &mut dyn serialport::SerialPort, response_type: ResponseC
         response[RawCommand::packed_bytes()..RawCommand::packed_bytes() + 4].try_into()?,
     );
 
-    if retval != 0 {
-        return Err(anyhow!("Error response returned: {}", retval));
-    }
+    send_ack(port)?;
 
-    Ok(())
+    if retval != 0 {
+        Err(anyhow!("Error response returned: {}", retval))
+    } else {
+        Ok(())
+    }
 }
 
 fn send_command(
@@ -406,6 +413,8 @@ fn send_command(
     port.write(&command_bytes)?;
     port.flush()?;
 
+    read_ack(port)?;
+
     Ok(())
 }
 
@@ -416,6 +425,8 @@ fn send_data(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()>
 
     port.write(&data_bytes)?;
     port.flush()?;
+
+    read_ack(port)?;
 
     Ok(())
 }
@@ -433,11 +444,7 @@ pub fn do_isp_read_memory(
 
     send_command(port, CommandTag::ReadMemory, args)?;
 
-    read_ack(port)?;
-
     read_response(port, ResponseCode::ReadMemoryResponse)?;
-
-    send_ack(port)?;
 
     let mut data = Vec::new();
     let mut received: usize = 0;
@@ -448,13 +455,9 @@ pub fn do_isp_read_memory(
         data.extend_from_slice(&d);
 
         received += d.len();
-
-        send_ack(port)?;
     }
 
     read_response(port, ResponseCode::GenericResponse)?;
-
-    send_ack(port)?;
 
     Ok(data)
 }
@@ -472,11 +475,7 @@ pub fn do_isp_write_memory(
 
     send_command(port, CommandTag::WriteMemory, args)?;
 
-    read_ack(port)?;
-
     read_response(port, ResponseCode::GenericResponse)?;
-
-    send_ack(port)?;
 
     // Target doesn't like it when we send an entire binary in one pass
     // so break it down into 512 byte chunks. Maybe choose a better
@@ -488,13 +487,10 @@ pub fn do_isp_write_memory(
 
         send_data(port, data[cnt..end].to_vec())?;
 
-        read_ack(port)?;
         cnt += 512;
     }
 
     read_response(port, ResponseCode::GenericResponse)?;
-
-    send_ack(port)?;
 
     Ok(())
 }
@@ -507,11 +503,7 @@ pub fn do_isp_flash_erase_all(port: &mut dyn serialport::SerialPort) -> Result<(
 
     send_command(port, CommandTag::FlashEraseAll, args)?;
 
-    read_ack(port)?;
-
     read_response(port, ResponseCode::GenericResponse)?;
-
-    send_ack(port)?;
 
     Ok(())
 }
