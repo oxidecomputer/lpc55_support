@@ -54,6 +54,33 @@ enum ISPCommand {
     },
     /// Put a minimalist program on to allow attaching via SWD
     Restore,
+    /// Send SB update file
+    SendSBUpdate {
+        #[structopt(parse(from_os_str))]
+        file: PathBuf,
+    },
+    /// Set up key store this involves
+    /// - Enroll
+    /// - Setting UDS
+    /// - Setting SBKEK
+    /// - Writing to persistent storage
+    SetupKeyStore {
+        #[structopt(parse(from_os_str))]
+        file: PathBuf,
+    },
+    /// Trigger a new enrollment in the PUF
+    Enroll,
+    /// Generate a new device secret for use in DICE
+    GenerateUDS,
+    /// Write keystore to flash
+    WriteKeyStore,
+    /// Erase existing keystore
+    EraseKeyStore,
+    /// Set the SBKEK, required for SB Updates
+    SetSBKek {
+        #[structopt(parse(from_os_str))]
+        file: PathBuf,
+    },
 }
 
 #[derive(Debug, StructOpt)]
@@ -209,6 +236,101 @@ fn main() -> Result<()> {
             do_isp_write_memory(&mut *port, 0x0, bytes.to_vec())?;
 
             println!("Restore done! SWD should work now.");
+        }
+        ISPCommand::SendSBUpdate { file } => {
+            do_ping(&mut *port)?;
+
+            println!("Sending SB file, this may take a while");
+            let mut infile = std::fs::OpenOptions::new().read(true).open(&file)?;
+
+            let mut bytes = Vec::new();
+
+            infile.read_to_end(&mut bytes)?;
+
+            do_recv_sb_file(&mut *port, bytes)?;
+            println!("Send complete!");
+        }
+        ISPCommand::Enroll => {
+            do_ping(&mut *port)?;
+
+            println!("Generating new activation code");
+
+            do_enroll(&mut *port)?;
+            println!("done.");
+            println!("If you want to save this, remember to write to non-volatile memory");
+        }
+        ISPCommand::GenerateUDS => {
+            do_ping(&mut *port)?;
+
+            println!("Generating new UDS");
+
+            do_generate_uds(&mut *port)?;
+            println!("done.");
+            println!("If you want to save this, remember to write to non-volatile memory");
+        }
+        ISPCommand::WriteKeyStore => {
+            do_ping(&mut *port)?;
+
+            println!("Writing key store to flash");
+            do_save_keystore(&mut *port)?;
+            println!("done.");
+        }
+        ISPCommand::EraseKeyStore => {
+            do_ping(&mut *port)?;
+
+            println!("Erasing existing keystore");
+            // Write 3 * 512 bytes of 0
+            let bytes = vec![0; 512 * 3];
+
+            do_isp_write_keystore(&mut *port, bytes)?;
+            do_save_keystore(&mut *port)?;
+            println!("done.")
+        }
+        ISPCommand::SetSBKek { file } => {
+            do_ping(&mut *port)?;
+
+            let mut infile = std::fs::OpenOptions::new().read(true).open(&file)?;
+
+            let mut raw_bytes = Vec::new();
+
+            infile.read_to_end(&mut raw_bytes)?;
+
+            let mut actual_bytes = hex::decode(&raw_bytes)?;
+
+            actual_bytes.reverse();
+
+            do_isp_set_userkey(&mut *port, KeyType::SBKEK, actual_bytes)?;
+            println!("done.");
+        }
+        ISPCommand::SetupKeyStore { file } => {
+            do_ping(&mut *port)?;
+
+            // Step 1: Enroll
+            println!("Generating new activation code");
+            do_enroll(&mut *port)?;
+
+            // Step 2: Generate UDS
+            println!("Generating new UDS");
+            do_generate_uds(&mut *port)?;
+
+            // Step 3: Set the SBKEK
+            let mut infile = std::fs::OpenOptions::new().read(true).open(&file)?;
+
+            let mut raw_bytes = Vec::new();
+
+            infile.read_to_end(&mut raw_bytes)?;
+
+            let mut actual_bytes = hex::decode(&raw_bytes)?;
+
+            // NXP stores the key reversed? It's very unclear...
+            actual_bytes.reverse();
+
+            println!("Setting user key");
+            do_isp_set_userkey(&mut *port, KeyType::SBKEK, actual_bytes)?;
+
+            println!("Writing keystore");
+            // Step 4: Write the keystore to persistent storage
+            do_save_keystore(&mut *port)?;
         }
     }
 

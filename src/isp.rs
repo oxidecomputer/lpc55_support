@@ -29,7 +29,32 @@ enum ResponseCode {
     ReadMemoryResponse = 0xA3,
     //GetPropertyResponse = 0xA7,
     //FlashReadOnceResponse = 0xAF,
-    //KeyProvisionResponse = 0xB5
+    KeyProvisionResponse = 0xB5,
+}
+
+#[repr(u32)]
+#[derive(Copy, Clone, Debug)]
+pub enum KeyType {
+    // Secureboot Key Encryption Key
+    SBKEK = 0x3,
+    // Prince = 7 - 9
+    // USER is available to use for whatever
+    // Wish there were more than one user :(
+    USERKEK = 0xB,
+    // UDS used in DICE
+    UDS = 0xC,
+}
+
+#[repr(u32)]
+#[derive(Copy, Clone, Debug)]
+enum KeyProvisionCmds {
+    Enroll = 0x0,
+    SetUserKey = 0x1,
+    SetIntrinsicKey = 0x2,
+    WriteNonVolatile = 0x3,
+    //ReadNonVolatile = 0x4,
+    WriteKeyStore = 0x5,
+    //ReadKeyStore = 0x6,
 }
 
 // Commands are abbridged right now for what we care about
@@ -39,6 +64,8 @@ enum CommandTag {
     FlashEraseAll = 0x1,
     ReadMemory = 0x3,
     WriteMemory = 0x4,
+    ReceiveSbFile = 0x8,
+    KeyProvision = 0x15,
 }
 
 #[repr(C)]
@@ -427,6 +454,142 @@ fn send_data(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()>
     port.flush()?;
 
     read_ack(port)?;
+
+    Ok(())
+}
+
+pub fn do_save_keystore(port: &mut dyn serialport::SerialPort) -> Result<()> {
+    let mut args: Vec<u32> = Vec::new();
+
+    // Arg 0 =  WriteNonVolatile
+    args.push(KeyProvisionCmds::WriteNonVolatile as u32);
+    // Arg 1 = Memory ID (0 = internal flash)
+    args.push(0);
+
+    send_command(port, CommandTag::KeyProvision, args)?;
+
+    read_response(port, ResponseCode::GenericResponse)?;
+
+    Ok(())
+}
+
+pub fn do_enroll(port: &mut dyn serialport::SerialPort) -> Result<()> {
+    let mut args: Vec<u32> = Vec::new();
+
+    // Arg =  Enroll
+    args.push(KeyProvisionCmds::Enroll as u32);
+
+    send_command(port, CommandTag::KeyProvision, args)?;
+
+    read_response(port, ResponseCode::GenericResponse)?;
+
+    Ok(())
+}
+
+pub fn do_generate_uds(port: &mut dyn serialport::SerialPort) -> Result<()> {
+    let mut args: Vec<u32> = Vec::new();
+
+    // Arg 0 =  SetIntrinsicKey
+    args.push(KeyProvisionCmds::SetIntrinsicKey as u32);
+    // Arg 1 = UDS
+    args.push(KeyType::UDS as u32);
+    // Arg 2 = size
+    args.push(32);
+
+    send_command(port, CommandTag::KeyProvision, args)?;
+
+    read_response(port, ResponseCode::GenericResponse)?;
+
+    Ok(())
+}
+
+pub fn do_isp_write_keystore(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()> {
+    let mut args = Vec::new();
+
+    args.push(KeyProvisionCmds::WriteKeyStore as u32);
+
+    send_command(port, CommandTag::KeyProvision, args)?;
+
+    read_response(port, ResponseCode::KeyProvisionResponse)?;
+
+    // Target doesn't like it when we send an entire binary in one pass
+    // so break it down into 512 byte chunks. Maybe choose a better
+    // number than 512?
+    let mut cnt = 0;
+
+    while cnt < data.len() {
+        let end = min(data.len(), cnt + 512);
+
+        send_data(port, data[cnt..end].to_vec())?;
+
+        cnt += 512;
+    }
+
+    read_response(port, ResponseCode::GenericResponse)?;
+
+    Ok(())
+}
+
+pub fn do_recv_sb_file(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()> {
+    let mut args = Vec::new();
+
+    args.push(data.len() as u32);
+
+    send_command(port, CommandTag::ReceiveSbFile, args)?;
+
+    read_response(port, ResponseCode::GenericResponse)?;
+
+    // Target doesn't like it when we send an entire binary in one pass
+    // so break it down into 512 byte chunks. Maybe choose a better
+    // number than 512?
+    let mut cnt = 0;
+
+    while cnt < data.len() {
+        let end = min(data.len(), cnt + 512);
+
+        send_data(port, data[cnt..end].to_vec())?;
+
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        cnt += 512;
+    }
+
+    read_response(port, ResponseCode::GenericResponse)?;
+
+    Ok(())
+}
+
+pub fn do_isp_set_userkey(
+    port: &mut dyn serialport::SerialPort,
+    key_type: KeyType,
+    data: Vec<u8>,
+) -> Result<()> {
+    let mut args = Vec::new();
+
+    // Arg0 = Set User Key
+    args.push(KeyProvisionCmds::SetUserKey as u32);
+    // Arg1 =  Key type
+    args.push(key_type as u32);
+    // Arg2 = Key size
+    args.push(data.len() as u32);
+
+    send_command(port, CommandTag::KeyProvision, args)?;
+
+    read_response(port, ResponseCode::KeyProvisionResponse)?;
+
+    // Target doesn't like it when we send an entire binary in one pass
+    // so break it down into 512 byte chunks. Maybe choose a better
+    // number than 512?
+    let mut cnt = 0;
+
+    while cnt < data.len() {
+        let end = min(data.len(), cnt + 512);
+
+        send_data(port, data[cnt..end].to_vec())?;
+
+        cnt += 512;
+    }
+
+    read_response(port, ResponseCode::GenericResponse)?;
 
     Ok(())
 }
