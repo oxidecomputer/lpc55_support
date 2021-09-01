@@ -422,7 +422,14 @@ fn read_response(port: &mut dyn serialport::SerialPort, response_type: ResponseC
     send_ack(port)?;
 
     if retval != 0 {
-        Err(anyhow!("Error response returned: {}", retval))
+        // Some more specific error messages.
+        if retval == 10203 {
+            Err(anyhow!("Did you forget to erase the flash? (err 10203)"))
+        } else if retval == 10101 {
+            Err(anyhow!("Incorrect signature. Is the SBKEK set correctly? (err 10101)"))
+        } else {
+            Err(anyhow!("ISP error returned: {}", retval))
+        }
     } else {
         Ok(())
     }
