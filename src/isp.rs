@@ -446,14 +446,24 @@ fn send_command(
 }
 
 fn send_data(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()> {
-    let data = DataPacket::new_data(data);
+    let mut cnt = 0;
 
-    let data_bytes = data.to_bytes();
+    // Target doesn't like it when we send an entire binary in one pass
+    // so break it down into 512 byte chunks which is what the existing
+    // tools seem to use
+    while cnt < data.len() {
+        let end = min(data.len(), cnt + 512);
 
-    port.write(&data_bytes)?;
-    port.flush()?;
+        let data_packet = DataPacket::new_data(data[cnt..end].to_vec());
 
-    read_ack(port)?;
+        let data_bytes = data_packet.to_bytes();
+
+        port.write(&data_bytes)?;
+        port.flush()?;
+
+        read_ack(port)?;
+        cnt += 512;
+    }
 
     Ok(())
 }
@@ -512,18 +522,7 @@ pub fn do_isp_write_keystore(port: &mut dyn serialport::SerialPort, data: Vec<u8
 
     read_response(port, ResponseCode::KeyProvisionResponse)?;
 
-    // Target doesn't like it when we send an entire binary in one pass
-    // so break it down into 512 byte chunks. Maybe choose a better
-    // number than 512?
-    let mut cnt = 0;
-
-    while cnt < data.len() {
-        let end = min(data.len(), cnt + 512);
-
-        send_data(port, data[cnt..end].to_vec())?;
-
-        cnt += 512;
-    }
+    send_data(port, data)?;
 
     read_response(port, ResponseCode::GenericResponse)?;
 
@@ -539,19 +538,7 @@ pub fn do_recv_sb_file(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> 
 
     read_response(port, ResponseCode::GenericResponse)?;
 
-    // Target doesn't like it when we send an entire binary in one pass
-    // so break it down into 512 byte chunks. Maybe choose a better
-    // number than 512?
-    let mut cnt = 0;
-
-    while cnt < data.len() {
-        let end = min(data.len(), cnt + 512);
-
-        send_data(port, data[cnt..end].to_vec())?;
-
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        cnt += 512;
-    }
+    send_data(port, data)?;
 
     read_response(port, ResponseCode::GenericResponse)?;
 
@@ -576,18 +563,7 @@ pub fn do_isp_set_userkey(
 
     read_response(port, ResponseCode::KeyProvisionResponse)?;
 
-    // Target doesn't like it when we send an entire binary in one pass
-    // so break it down into 512 byte chunks. Maybe choose a better
-    // number than 512?
-    let mut cnt = 0;
-
-    while cnt < data.len() {
-        let end = min(data.len(), cnt + 512);
-
-        send_data(port, data[cnt..end].to_vec())?;
-
-        cnt += 512;
-    }
+    send_data(port, data)?;
 
     read_response(port, ResponseCode::GenericResponse)?;
 
@@ -640,18 +616,7 @@ pub fn do_isp_write_memory(
 
     read_response(port, ResponseCode::GenericResponse)?;
 
-    // Target doesn't like it when we send an entire binary in one pass
-    // so break it down into 512 byte chunks. Maybe choose a better
-    // number than 512?
-    let mut cnt = 0;
-
-    while cnt < data.len() {
-        let end = min(data.len(), cnt + 512);
-
-        send_data(port, data[cnt..end].to_vec())?;
-
-        cnt += 512;
-    }
+    send_data(port, data)?;
 
     read_response(port, ResponseCode::GenericResponse)?;
 
