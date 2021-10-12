@@ -416,9 +416,7 @@ fn read_response(port: &mut dyn serialport::SerialPort, response_type: ResponseC
 
     // Consider turning this into a structure maybe?
     let size = RawCommand::packed_bytes_size(None)?;
-    let retval = u32::from_le_bytes(
-        response[size..size + 4].try_into()?,
-    );
+    let retval = u32::from_le_bytes(response[size..size + 4].try_into()?);
 
     send_ack(port)?;
 
@@ -427,7 +425,9 @@ fn read_response(port: &mut dyn serialport::SerialPort, response_type: ResponseC
         if retval == 10203 {
             Err(anyhow!("Did you forget to erase the flash? (err 10203)"))
         } else if retval == 10101 {
-            Err(anyhow!("Incorrect signature. Is the SBKEK set correctly? (err 10101)"))
+            Err(anyhow!(
+                "Incorrect signature. Is the SBKEK set correctly? (err 10101)"
+            ))
         } else {
             Err(anyhow!("ISP error returned: {}", retval))
         }

@@ -233,10 +233,10 @@ pub struct SecureBootCfg {
 
     /// Undocumented?
     #[packed_field(bits = "14..=15")]
-    pub dice_inc_sec_epoch: ReservedZero<packed_bits::Bits::<2>>,
+    pub dice_inc_sec_epoch: ReservedZero<packed_bits::Bits<2>>,
 
     #[packed_field(bits = "29..=16")]
-    _reserved: ReservedZero<packed_bits::Bits::<14>>,
+    _reserved: ReservedZero<packed_bits::Bits<14>>,
 
     /// Enable secure boot
     #[packed_field(ty = "enum", bits = "30..=31")]
@@ -253,8 +253,8 @@ impl SecureBootCfg {
             tzm_image_type: TZMImageStatus::InImageHeader.into(),
             block_set_key: SetKeyStatus::EnableKeyCode.into(),
             block_enroll: EnrollStatus::EnableEnroll.into(),
-            dice_inc_sec_epoch: ReservedZero::<packed_bits::Bits::<2>>::default(),
-            _reserved: ReservedZero::<packed_bits::Bits::<14>>::default(),
+            dice_inc_sec_epoch: ReservedZero::<packed_bits::Bits<2>>::default(),
+            _reserved: ReservedZero::<packed_bits::Bits<14>>::default(),
             sec_boot_en: SecBootStatus::PlainImage.into(),
         }
     }
@@ -415,7 +415,7 @@ pub struct RKTHRevoke {
     pub rotk3: EnumCatchAll<ROTKeyStatus>,
 
     #[packed_field(bits = "31..=8")]
-    _reserved: ReservedZero<packed_bits::Bits::<24>>,
+    _reserved: ReservedZero<packed_bits::Bits<24>>,
 }
 
 impl RKTHRevoke {
@@ -425,7 +425,7 @@ impl RKTHRevoke {
             rotk1: ROTKeyStatus::Invalid.into(),
             rotk2: ROTKeyStatus::Invalid.into(),
             rotk3: ROTKeyStatus::Invalid.into(),
-            _reserved: ReservedZero::<packed_bits::Bits::<24>>::default(),
+            _reserved: ReservedZero::<packed_bits::Bits<24>>::default(),
         }
     }
 }
