@@ -169,7 +169,7 @@ pub struct CommandPacket {
 }
 
 impl CommandPacket {
-    fn new_command(c: CommandTag, args: Vec<u32>) -> CommandPacket {
+    fn new_command(c: CommandTag, args: Vec<u32>) -> Result<CommandPacket> {
         let mut v = VariablePacket {
             packet: FramingPacket::new(PacketType::PacketCommand),
             raw_command: RawCommand::new(c, args.len()),
@@ -185,7 +185,7 @@ impl CommandPacket {
 
         let mut crc = CRCu16::crc16xmodem();
 
-        let bytes = v.pack();
+        let bytes = v.pack()?;
 
         // CRC over everything except the CRC field, this includes the framing
         // header as well as the rest of the argument
@@ -201,22 +201,22 @@ impl CommandPacket {
         v.packet.crc16_low = (digest & 0xff) as u8;
         v.packet.crc16_high = ((digest >> 8) & 0xff) as u8;
 
-        CommandPacket {
+        Ok(CommandPacket {
             packet: v,
             params: args,
-        }
+        })
     }
 
-    fn to_bytes(self) -> Vec<u8> {
+    fn to_bytes(self) -> Result<Vec<u8>> {
         let mut v = Vec::new();
 
-        v.extend_from_slice(&self.packet.pack());
+        v.extend_from_slice(&self.packet.pack()?);
 
         for e in self.params.iter() {
             v.extend_from_slice(&e.to_le_bytes());
         }
 
-        v
+        Ok(v)
     }
 }
 
@@ -226,7 +226,7 @@ pub struct DataPacket {
 }
 
 impl DataPacket {
-    fn new_data(args: Vec<u8>) -> DataPacket {
+    fn new_data(args: Vec<u8>) -> Result<DataPacket> {
         let arg_len: u16 = args.len() as u16;
 
         let mut f = FramingPacket::new(PacketType::PacketData);
@@ -236,7 +236,7 @@ impl DataPacket {
 
         let mut crc = CRCu16::crc16xmodem();
 
-        let bytes = f.pack();
+        let bytes = f.pack()?;
 
         crc.digest(&bytes[..0x4]);
         crc.digest(&bytes[0x6..]);
@@ -247,26 +247,26 @@ impl DataPacket {
         f.crc16_low = (digest & 0xff) as u8;
         f.crc16_high = ((digest >> 8) & 0xff) as u8;
 
-        DataPacket {
+        Ok(DataPacket {
             packet: f,
             data: args,
-        }
+        })
     }
 
-    fn to_bytes(self) -> Vec<u8> {
+    fn to_bytes(self) -> Result<Vec<u8>> {
         let mut v = Vec::new();
 
-        v.extend_from_slice(&self.packet.pack());
+        v.extend_from_slice(&self.packet.pack()?);
         v.extend_from_slice(&self.data);
 
-        v
+        Ok(v)
     }
 }
 
 pub fn do_ping(port: &mut dyn serialport::SerialPort) -> Result<()> {
     let ping = PacketHeader::new(PacketType::PacketPing);
 
-    let ping_bytes = ping.pack();
+    let ping_bytes = ping.pack()?;
 
     port.write(&ping_bytes)?;
 
@@ -291,7 +291,7 @@ pub fn do_ping(port: &mut dyn serialport::SerialPort) -> Result<()> {
 fn send_ack(port: &mut dyn serialport::SerialPort) -> Result<()> {
     let packet = PacketHeader::new(PacketType::PacketAck);
 
-    let bytes = packet.pack();
+    let bytes = packet.pack()?;
 
     port.write(&bytes)?;
     port.flush()?;
@@ -341,10 +341,10 @@ fn check_crc(frame_bytes: &Vec<u8>, response: &Vec<u8>, frame: &FramingPacket) -
 }
 
 fn read_data(port: &mut dyn serialport::SerialPort) -> Result<Vec<u8>> {
-    let mut frame_bytes = vec![0; FramingPacket::packed_bytes()];
+    let mut frame_bytes = vec![0; FramingPacket::packed_bytes_size(None)?];
     let mut cnt = 0;
 
-    while cnt != FramingPacket::packed_bytes() {
+    while cnt != FramingPacket::packed_bytes_size(None)? {
         let r = port.read(&mut frame_bytes[cnt..])?;
         cnt += r;
     }
@@ -375,10 +375,10 @@ fn read_data(port: &mut dyn serialport::SerialPort) -> Result<Vec<u8>> {
 // Okay _technically_ the response can return values from get-property but for
 // now just return (). If we _really_ need properties we can add that later
 fn read_response(port: &mut dyn serialport::SerialPort, response_type: ResponseCode) -> Result<()> {
-    let mut frame_bytes = vec![0; FramingPacket::packed_bytes()];
+    let mut frame_bytes = vec![0; FramingPacket::packed_bytes_size(None)?];
     let mut cnt = 0;
 
-    while cnt != FramingPacket::packed_bytes() {
+    while cnt != FramingPacket::packed_bytes_size(None)? {
         let r = port.read(&mut frame_bytes[cnt..])?;
         cnt += r;
     }
@@ -404,7 +404,7 @@ fn read_response(port: &mut dyn serialport::SerialPort, response_type: ResponseC
 
     check_crc(&frame_bytes, &response, &frame)?;
 
-    let command = RawCommand::unpack_from_slice(&response[..RawCommand::packed_bytes()])?;
+    let command = RawCommand::unpack_from_slice(&response[..RawCommand::packed_bytes_size(None)?])?;
 
     if command.tag != (response_type as u8) {
         return Err(anyhow!(
@@ -415,8 +415,9 @@ fn read_response(port: &mut dyn serialport::SerialPort, response_type: ResponseC
     }
 
     // Consider turning this into a structure maybe?
+    let size = RawCommand::packed_bytes_size(None)?;
     let retval = u32::from_le_bytes(
-        response[RawCommand::packed_bytes()..RawCommand::packed_bytes() + 4].try_into()?,
+        response[size..size + 4].try_into()?,
     );
 
     send_ack(port)?;
@@ -440,9 +441,9 @@ fn send_command(
     cmd: CommandTag,
     args: Vec<u32>,
 ) -> Result<()> {
-    let command = CommandPacket::new_command(cmd, args);
+    let command = CommandPacket::new_command(cmd, args)?;
 
-    let command_bytes = command.to_bytes();
+    let command_bytes = command.to_bytes()?;
 
     port.write(&command_bytes)?;
     port.flush()?;
@@ -461,9 +462,9 @@ fn send_data(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()>
     while cnt < data.len() {
         let end = min(data.len(), cnt + 512);
 
-        let data_packet = DataPacket::new_data(data[cnt..end].to_vec());
+        let data_packet = DataPacket::new_data(data[cnt..end].to_vec())?;
 
-        let data_bytes = data_packet.to_bytes();
+        let data_bytes = data_packet.to_bytes()?;
 
         port.write(&data_bytes)?;
         port.flush()?;

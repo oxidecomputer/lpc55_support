@@ -51,7 +51,7 @@ fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Pa
 
     // We're relying on packed_struct to catch errors of padding
     // or size since we know how big this should be
-    let cert_header_size = CertHeader::packed_bytes();
+    let cert_header_size = CertHeader::packed_bytes_size(None)?;
 
     let mut new_cert_header: CertHeader = CertHeader::new(
         cert_header_size,
@@ -83,7 +83,7 @@ fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Pa
 
     let boot_field = BootField::new(BootImageType::SignedImage);
 
-    bytes[0x24..0x28].clone_from_slice(&boot_field.pack());
+    bytes[0x24..0x28].clone_from_slice(&boot_field.pack()?);
     // Our execution address is always 0
     byteorder::LittleEndian::write_u32(&mut bytes[0x34..0x38], 0x0);
     // where to find the block. For now just stick it right after the image
@@ -100,7 +100,7 @@ fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Pa
     if image_pad > 0 {
         out.write_all(&vec![0; image_pad])?;
     }
-    out.write_all(&new_cert_header.pack())?;
+    out.write_all(&new_cert_header.pack()?)?;
     out.write_u32::<byteorder::LittleEndian>((verify_key_point.len()) as u32)?;
     out.write_all(&verify_key_point.as_bytes())?;
     if cert_pad > 0 {

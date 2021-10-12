@@ -1,3 +1,4 @@
+use anyhow::Result;
 use packed_struct::prelude::*;
 
 // Table 183, section 7.3.4
@@ -232,10 +233,10 @@ pub struct SecureBootCfg {
 
     /// Undocumented?
     #[packed_field(bits = "14..=15")]
-    pub dice_inc_sec_epoch: ReservedZero<packed_bits::Bits2>,
+    pub dice_inc_sec_epoch: ReservedZero<packed_bits::Bits::<2>>,
 
     #[packed_field(bits = "29..=16")]
-    _reserved: ReservedZero<packed_bits::Bits14>,
+    _reserved: ReservedZero<packed_bits::Bits::<14>>,
 
     /// Enable secure boot
     #[packed_field(ty = "enum", bits = "30..=31")]
@@ -252,8 +253,8 @@ impl SecureBootCfg {
             tzm_image_type: TZMImageStatus::InImageHeader.into(),
             block_set_key: SetKeyStatus::EnableKeyCode.into(),
             block_enroll: EnrollStatus::EnableEnroll.into(),
-            dice_inc_sec_epoch: ReservedZero::<packed_bits::Bits2>::default(),
-            _reserved: ReservedZero::<packed_bits::Bits14>::default(),
+            dice_inc_sec_epoch: ReservedZero::<packed_bits::Bits::<2>>::default(),
+            _reserved: ReservedZero::<packed_bits::Bits::<14>>::default(),
             sec_boot_en: SecBootStatus::PlainImage.into(),
         }
     }
@@ -330,7 +331,7 @@ pub struct CMPAPage {
 }
 
 impl CMPAPage {
-    pub fn new(sec_boot_cfg: SecureBootCfg) -> CMPAPage {
+    pub fn new(sec_boot_cfg: SecureBootCfg) -> Result<CMPAPage> {
         let mut p = CMPAPage::default();
 
         // We're very deliberate about using from_be_bytes here despite
@@ -341,9 +342,9 @@ impl CMPAPage {
         // little endian so to avoid a double endian swap here we store
         // the integer as big endian and let the pack() function swap the
         // endian for us.
-        p.secure_boot_cfg = u32::from_be_bytes(sec_boot_cfg.pack());
+        p.secure_boot_cfg = u32::from_be_bytes(sec_boot_cfg.pack()?);
 
-        p
+        Ok(p)
     }
 }
 
@@ -414,7 +415,7 @@ pub struct RKTHRevoke {
     pub rotk3: EnumCatchAll<ROTKeyStatus>,
 
     #[packed_field(bits = "31..=8")]
-    _reserved: ReservedZero<packed_bits::Bits24>,
+    _reserved: ReservedZero<packed_bits::Bits::<24>>,
 }
 
 impl RKTHRevoke {
@@ -424,7 +425,7 @@ impl RKTHRevoke {
             rotk1: ROTKeyStatus::Invalid.into(),
             rotk2: ROTKeyStatus::Invalid.into(),
             rotk3: ROTKeyStatus::Invalid.into(),
-            _reserved: ReservedZero::<packed_bits::Bits24>::default(),
+            _reserved: ReservedZero::<packed_bits::Bits::<24>>::default(),
         }
     }
 }
@@ -513,7 +514,7 @@ impl CFPAPage {
         self.version = self.version + 1;
     }
 
-    pub fn update_rkth_revoke(&mut self, rkth: RKTHRevoke) {
+    pub fn update_rkth_revoke(&mut self, rkth: RKTHRevoke) -> Result<()> {
         // We're very deliberate about using from_be_bytes here despite
         // the fact that this is technically going to be an le integer.
         // packed_struct does not handle endian byte swapping for structres
@@ -522,6 +523,8 @@ impl CFPAPage {
         // little endian so to avoid a double endian swap here we store
         // the integer as big endian and let the pack() function swap the
         // endian for us.
-        self.rkth_revoke = u32::from_be_bytes(rkth.pack());
+        self.rkth_revoke = u32::from_be_bytes(rkth.pack()?);
+
+        Ok(())
     }
 }
