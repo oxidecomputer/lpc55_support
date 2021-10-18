@@ -53,9 +53,9 @@ fn main() -> Result<()> {
 
     rkth.rotk0 = ROTKeyStatus::Enabled.into();
 
-    cfpa.update_rkth_revoke(rkth);
+    cfpa.update_rkth_revoke(rkth)?;
 
-    let mut updated = cfpa.pack();
+    let mut updated = cfpa.pack()?;
 
     // need to recalculate sha over the updated data
     let mut sha = sha::Sha256::new();

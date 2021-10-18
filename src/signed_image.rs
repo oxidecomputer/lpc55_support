@@ -32,7 +32,7 @@ fn do_signed_image(
 
     // We're relying on packed_struct to catch errors of padding
     // or size since we know how big this should be
-    let cert_header_size = CertHeader::packed_bytes();
+    let cert_header_size = CertHeader::packed_bytes_size(None)?;
 
     let mut new_cert_header: CertHeader = CertHeader::new(
         cert_header_size,
@@ -79,7 +79,7 @@ fn do_signed_image(
 
     let boot_field = BootField::new(BootImageType::SignedImage);
 
-    bytes[0x24..0x28].clone_from_slice(&boot_field.pack());
+    bytes[0x24..0x28].clone_from_slice(&boot_field.pack()?);
     // Our execution address is always 0
     byteorder::LittleEndian::write_u32(&mut bytes[0x34..0x38], 0x0);
     // where to find the block. For now just stick it right after the image
@@ -99,7 +99,7 @@ fn do_signed_image(
     if image_pad > 0 {
         out.write_all(&vec![0; image_pad])?;
     }
-    out.write_all(&new_cert_header.pack())?;
+    out.write_all(&new_cert_header.pack()?)?;
     out.write_u32::<byteorder::LittleEndian>((root0_bytes.len() + cert_pad) as u32)?;
     out.write_all(&root0_bytes)?;
     if cert_pad > 0 {
@@ -157,9 +157,9 @@ fn do_cmpa(cmpa_path: &Path, rkth: &[u8; 32]) -> Result<()> {
     secure_boot_cfg.skip_dice = EnableDiceStatus::DisableDice1.into();
     secure_boot_cfg.sec_boot_en = SecBootStatus::SignedImage3.into();
 
-    let cmpa = CMPAPage::new(secure_boot_cfg);
+    let cmpa = CMPAPage::new(secure_boot_cfg)?;
 
-    let mut cmpa_bytes = cmpa.pack();
+    let mut cmpa_bytes = cmpa.pack()?;
 
     cmpa_bytes[0x50..0x70].clone_from_slice(rkth);
     cmpa_out.write_all(&cmpa_bytes)?;

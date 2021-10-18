@@ -24,7 +24,7 @@ pub fn update_crc(src: &Path, dest: &Path) -> Result<()> {
     // indicates TZ image and plain CRC XIP image
     // See 7.5.3.1 for details on why we need the TZ bit
     let boot_field = BootField::new(BootImageType::CRCImage);
-    bytes[0x24..0x28].clone_from_slice(&boot_field.pack());
+    bytes[0x24..0x28].clone_from_slice(&boot_field.pack()?);
 
     // Our execution address is always 0
     byteorder::LittleEndian::write_u32(&mut bytes[0x34..0x38], 0x0);
