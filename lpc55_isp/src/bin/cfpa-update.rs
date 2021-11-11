@@ -6,9 +6,9 @@ use anyhow::Result;
 use lpc55_isp::cmd::{do_isp_read_memory, do_isp_write_memory};
 use lpc55_isp::isp::do_ping;
 use lpc55_sign::areas::*;
-use openssl::sha;
 use packed_struct::prelude::*;
 use serialport::{DataBits, FlowControl, Parity, SerialPortSettings, StopBits};
+use sha2::Digest;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -64,12 +64,12 @@ fn main() -> Result<()> {
     let mut updated = cfpa.pack()?;
 
     // need to recalculate sha over the updated data
-    let mut sha = sha::Sha256::new();
+    let mut sha = sha2::Sha256::new();
     sha.update(&updated[..0x1e0]);
 
-    let updated_sha = sha.finish();
+    let updated_sha = sha.finalize();
 
-    updated[0x1e0..].clone_from_slice(&updated_sha);
+    updated[0x1e0..].clone_from_slice(updated_sha.as_slice());
 
     if let Some(f) = args.outfile {
         let mut new_cfpa = std::fs::OpenOptions::new()

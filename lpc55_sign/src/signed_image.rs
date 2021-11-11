@@ -5,7 +5,9 @@
 use crate::areas::*;
 use anyhow::Result;
 use byteorder::{ByteOrder, WriteBytesExt};
-use openssl::{hash, pkey, rsa, sha, sign, x509};
+use rsa::{pkcs1::FromRsaPrivateKey, pkcs1::FromRsaPublicKey, PublicKeyParts};
+use sha2::Digest;
+
 use packed_struct::prelude::*;
 use std::convert::TryInto;
 use std::fs::OpenOptions;
@@ -28,8 +30,7 @@ fn do_signed_image(
     let mut bytes = std::fs::read(binary_path)?;
     let image_pad = get_pad(bytes.len());
 
-    let priv_key_bytes = std::fs::read(priv_key_path)?;
-    let priv_key = rsa::Rsa::private_key_from_pem(&priv_key_bytes)?;
+    let priv_key = rsa::RsaPrivateKey::read_pkcs1_pem_file(priv_key_path)?;
 
     let root0_bytes = std::fs::read(root_cert0_path)?;
     let cert_pad = get_pad(root0_bytes.len());
@@ -63,19 +64,20 @@ fn do_signed_image(
 
     new_cert_header.total_image_len = signed_len.try_into().unwrap();
 
-    let root0: x509::X509 = x509::X509::from_der(&root0_bytes)?;
+    let (_, root0) = x509_parser::parse_x509_certificate(&root0_bytes)?;
 
-    let root0_pubkey = root0.public_key().unwrap().rsa()?;
+    let root0_pubkey =
+        rsa::RsaPublicKey::from_pkcs1_der(root0.public_key().subject_public_key.as_ref())?;
 
     // We need the sha256 of the pubkeys. This is just the sha256
     // of n + e from the pubkey
     let n = root0_pubkey.n();
     let e = root0_pubkey.e();
 
-    let mut sha = sha::Sha256::new();
-    sha.update(&n.to_vec());
-    sha.update(&e.to_vec());
-    let root0_sha = sha.finish();
+    let mut sha = sha2::Sha256::new();
+    sha.update(&n.to_bytes_be());
+    sha.update(&e.to_bytes_be());
+    let root0_sha = sha.finalize();
 
     let image_len = bytes.len();
 
@@ -116,25 +118,29 @@ fn do_signed_image(
     out.write_all(&empty_hash)?;
 
     // The sha256 of all the root keys gets put in in the CMPA area
-    let mut rkth_sha = sha::Sha256::new();
+    let mut rkth_sha = sha2::Sha256::new();
     rkth_sha.update(&root0_sha);
     rkth_sha.update(&empty_hash);
     rkth_sha.update(&empty_hash);
     rkth_sha.update(&empty_hash);
 
-    let rkth = rkth_sha.finish();
+    let rkth = rkth_sha.finalize();
 
     drop(out);
-
-    let pkey = pkey::PKey::from_rsa(priv_key)?;
-    let mut signer = sign::Signer::new(hash::MessageDigest::sha256(), &pkey)?;
 
     // the easiest way to get the bytes we need to sign is to read back
     // what we just wrote
     let sign_bytes = std::fs::read(outfile_path)?;
-    signer.set_rsa_padding(rsa::Padding::PKCS1)?;
-    signer.update(&sign_bytes)?;
-    let sig = signer.sign_to_vec()?;
+
+    let mut img_hash = sha2::Sha256::new();
+    img_hash.update(&sign_bytes);
+
+    let sig = priv_key.sign(
+        rsa::padding::PaddingScheme::PKCS1v15Sign {
+            hash: Some(rsa::hash::Hash::SHA2_256),
+        },
+        img_hash.finalize().as_slice(),
+    )?;
 
     println!("Image signature {:x?}", sig);
 
@@ -146,7 +152,7 @@ fn do_signed_image(
     out.write_all(&sig)?;
     drop(out);
 
-    Ok(rkth)
+    Ok(rkth.as_slice().try_into().expect("something went wrong?"))
 }
 
 fn do_cmpa(cmpa_path: &Path, rkth: &[u8; 32]) -> Result<()> {
