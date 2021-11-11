@@ -358,7 +358,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "lpc55_support"
+name = "lpc55_isp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "byteorder",
+ "crc-any",
+ "hex",
+ "lpc55_sign",
+ "openssl",
+ "packed_struct",
+ "packed_struct_codegen",
+ "parse_int",
+ "serialport",
+ "structopt",
+]
+
+[[package]]
+name = "lpc55_sign"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -371,8 +388,6 @@ dependencies = [
  "p256",
  "packed_struct",
  "packed_struct_codegen",
- "parse_int",
- "serialport",
  "structopt",
 ]
 
