@@ -4,7 +4,8 @@
 
 use anyhow::Result;
 use byteorder::ByteOrder;
-use lpc55_support::isp::*;
+use lpc55_isp::cmd::*;
+use lpc55_isp::isp::{do_ping, KeyType};
 use serialport::{DataBits, FlowControl, Parity, SerialPortSettings, StopBits};
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -113,7 +114,7 @@ fn main() -> Result<()> {
         data_bits: DataBits::Eight,
         flow_control: FlowControl::None,
         parity: Parity::None,
-        stop_bits: StopBits::One
+        stop_bits: StopBits::One,
     };
 
     let mut port = serialport::open_with_settings(&cmd.port, &settings)?;
