@@ -249,3 +249,18 @@ pub fn do_isp_get_property(
 
     Ok(f)
 }
+
+pub fn do_isp_last_error(port: &mut dyn serialport::SerialPort) -> Result<Vec<u32>> {
+    let args = vec![
+        // Arg 0 = LastCRC
+        BootloaderProperty::CRCStatus as u32,
+        // Arg 1 = Last error
+        1_u32,
+    ];
+
+    send_command(port, CommandTag::GetProperty, args)?;
+
+    let f = read_response(port, ResponseCode::GetProperty)?;
+
+    Ok(f)
+}
