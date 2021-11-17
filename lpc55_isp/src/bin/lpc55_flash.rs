@@ -90,6 +90,7 @@ enum ISPCommand {
         #[structopt(parse(try_from_str))]
         prop: BootloaderProperty,
     },
+    LastError,
 }
 
 #[derive(Debug, StructOpt)]
@@ -176,6 +177,50 @@ fn pretty_print_bootloader_prop(prop: BootloaderProperty, params: Vec<u32>) {
         BootloaderProperty::FFRKeyStoreStatus => {
             println!("FFR Store Status = {}", params[1]);
         }
+    }
+}
+
+fn pretty_print_error(params: Vec<u32>) {
+    let reason = params[1] & 0xfffffff0;
+    if reason == 0 {
+        println!("No errors reported");
+    } else if reason == 0x0602f300 {
+        println!("Passive boot failed, reason:");
+        let specific_reason = params[2] & 0xfffffff0;
+        match specific_reason {
+            0x0b36f300 => {
+                println!("Secure image authentication failed. Check:");
+                println!("- Is the image you are booting signed?");
+                println!("- Is the image signed with the corresponding key?");
+            }
+            0x0b37f300 => {
+                println!("Application CRC failed");
+            }
+            0x0b35f300 => {
+                println!("Application entry point and/or stack is invalid");
+            }
+            0x0b38f300 => {
+                println!("DICE failure. Check:");
+                println!("- Key store is set up properly (UDS)");
+            }
+            0x0d70f300 => {
+                println!("Trying to boot a TZ image on a device that doesn't have TZ!");
+            }
+            0x0d71f300 => {
+                println!("Error reading TZ Image type from CMPA");
+            }
+            0x0d72f300 => {
+                println!("Bad TZ image mode, check your image");
+            }
+            0x0c00f500 => {
+                println!("Application returned to the ROM?");
+            }
+            _ => {
+                println!("Some other reason, raw bytes: {:x?}", params);
+            }
+        }
+    } else {
+        println!("Something bad happen: {:x?}", params);
     }
 }
 
@@ -417,6 +462,10 @@ fn main() -> Result<()> {
         ISPCommand::GetProperty { prop } => {
             let result = do_isp_get_property(&mut *port, prop)?;
             pretty_print_bootloader_prop(prop, result);
+        }
+        ISPCommand::LastError => {
+            let result = do_isp_last_error(&mut *port)?;
+            pretty_print_error(result);
         }
     }
 
