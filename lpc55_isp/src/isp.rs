@@ -4,9 +4,11 @@
 
 use anyhow::{anyhow, Result};
 use crc_any::CRCu16;
+use num_derive::FromPrimitive;
 use packed_struct::prelude::*;
 use std::cmp::min;
 use std::convert::TryInto;
+use strum_macros::EnumString;
 
 #[repr(u8)]
 #[derive(Debug)]
@@ -25,7 +27,7 @@ enum PacketType {
 pub enum ResponseCode {
     Generic = 0xA0,
     ReadMemory = 0xA3,
-    //GetProperty = 0xA7,
+    GetProperty = 0xA7,
     //FlashReadOnce = 0xAF,
     KeyProvision = 0xB5,
 }
@@ -62,6 +64,7 @@ pub enum CommandTag {
     FlashEraseAll = 0x1,
     ReadMemory = 0x3,
     WriteMemory = 0x4,
+    GetProperty = 0x7,
     ReceiveSbFile = 0x8,
     KeyProvision = 0x15,
 }
@@ -83,6 +86,30 @@ impl PacketHeader {
             packet_type: ptype as u8,
         }
     }
+}
+
+#[repr(C)]
+#[derive(Debug, EnumString, FromPrimitive, Clone, Copy)]
+pub enum BootloaderProperty {
+    BootloaderVersion = 1,
+    AvailablePeripherals = 2,
+    FlashStart = 3,
+    FlashSize = 4,
+    FlashSectorSize = 5,
+    AvailableCommands = 7,
+    CRCStatus = 8,
+    VerifyWrites = 10,
+    MaxPacketSize = 11,
+    ReservedRegions = 12,
+    RAMStart = 14,
+    RAMSize = 15,
+    SystemDeviceID = 16,
+    SecurityState = 17,
+    UniqueID = 18,
+    TargetVersion = 24,
+    FlashPageSize = 27,
+    IRQPinStatus = 28,
+    FFRKeyStoreStatus = 29,
 }
 
 #[repr(C)]
@@ -306,7 +333,27 @@ fn read_ack(port: &mut dyn serialport::SerialPort) -> Result<()> {
 
     // Ack abort comes with a response packet explaining why
     if ack.packet_type == (PacketType::AckAbort as u8) {
-        read_response(port, ResponseCode::Generic)?
+        match read_response(port, ResponseCode::Generic) {
+            Ok(p) => {
+                if p.is_empty() {
+                    return Err(anyhow!("Response returned an unknown error code?"));
+                }
+                // The return value is always the first parameter
+                let retval = p[0];
+
+                // Some more specific error messages.
+                if retval == 10203 {
+                    return Err(anyhow!("Did you forget to erase the flash? (err 10203)"));
+                } else if retval == 10101 {
+                    return Err(anyhow!(
+                        "Incorrect signature. Is the SBKEK set correctly? (err 10101)"
+                    ));
+                } else {
+                    return Err(anyhow!("ISP error returned: {}", retval));
+                }
+            }
+            Err(e) => return Err(e),
+        }
     }
 
     if ack.packet_type != (PacketType::Ack as u8) {
@@ -375,7 +422,7 @@ pub fn read_data(port: &mut dyn serialport::SerialPort) -> Result<Vec<u8>> {
 pub fn read_response(
     port: &mut dyn serialport::SerialPort,
     response_type: ResponseCode,
-) -> Result<()> {
+) -> Result<Vec<u32>> {
     let mut frame_bytes = vec![0; FramingPacket::packed_bytes_size(None)?];
     let mut cnt = 0;
 
@@ -415,11 +462,20 @@ pub fn read_response(
         ));
     }
 
-    // Consider turning this into a structure maybe?
-    let size = RawCommand::packed_bytes_size(None)?;
-    let retval = u32::from_le_bytes(response[size..size + 4].try_into()?);
+    let mut params: Vec<u32> = Vec::new();
+    let mut cnt = 0;
+    let mut index = RawCommand::packed_bytes_size(None)?;
+
+    while cnt < command.parameter_count {
+        params.push(u32::from_le_bytes(response[index..index + 4].try_into()?));
+        cnt += 1;
+        index += 4;
+    }
 
     send_ack(port)?;
+
+    // First paramter is always the return code;
+    let retval = params[0];
 
     if retval != 0 {
         // Some more specific error messages.
@@ -433,7 +489,7 @@ pub fn read_response(
             Err(anyhow!("ISP error returned: {}", retval))
         }
     } else {
-        Ok(())
+        Ok(params)
     }
 }
 
