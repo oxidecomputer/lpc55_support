@@ -318,7 +318,7 @@ fn read_ack(port: &mut dyn serialport::SerialPort) -> Result<()> {
     Ok(())
 }
 
-fn check_crc(frame_bytes: &Vec<u8>, response: &Vec<u8>, frame: &FramingPacket) -> Result<()> {
+fn check_crc(frame_bytes: &[u8], response: &[u8], frame: &FramingPacket) -> Result<()> {
     let mut crc = CRCu16::crc16xmodem();
     crc.digest(&frame_bytes[..0x4]);
     crc.digest(&frame_bytes[0x6..]);
