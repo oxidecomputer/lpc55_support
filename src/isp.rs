@@ -477,12 +477,12 @@ fn send_data(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()>
 }
 
 pub fn do_save_keystore(port: &mut dyn serialport::SerialPort) -> Result<()> {
-    let mut args: Vec<u32> = Vec::new();
-
-    // Arg 0 =  WriteNonVolatile
-    args.push(KeyProvisionCmds::WriteNonVolatile as u32);
-    // Arg 1 = Memory ID (0 = internal flash)
-    args.push(0);
+    let args = vec![
+        // Arg 0 =  WriteNonVolatile
+        KeyProvisionCmds::WriteNonVolatile as u32,
+        // Arg 1 = Memory ID (0 = internal flash)
+        0
+    ];
 
     send_command(port, CommandTag::KeyProvision, args)?;
 
@@ -492,10 +492,10 @@ pub fn do_save_keystore(port: &mut dyn serialport::SerialPort) -> Result<()> {
 }
 
 pub fn do_enroll(port: &mut dyn serialport::SerialPort) -> Result<()> {
-    let mut args: Vec<u32> = Vec::new();
-
-    // Arg =  Enroll
-    args.push(KeyProvisionCmds::Enroll as u32);
+    let args = vec![
+        // Arg =  Enroll
+        KeyProvisionCmds::Enroll as u32
+    ];
 
     send_command(port, CommandTag::KeyProvision, args)?;
 
@@ -505,14 +505,14 @@ pub fn do_enroll(port: &mut dyn serialport::SerialPort) -> Result<()> {
 }
 
 pub fn do_generate_uds(port: &mut dyn serialport::SerialPort) -> Result<()> {
-    let mut args: Vec<u32> = Vec::new();
-
-    // Arg 0 =  SetIntrinsicKey
-    args.push(KeyProvisionCmds::SetIntrinsicKey as u32);
-    // Arg 1 = UDS
-    args.push(KeyType::UDS as u32);
-    // Arg 2 = size
-    args.push(32);
+    let args = vec![
+        // Arg 0 =  SetIntrinsicKey
+        KeyProvisionCmds::SetIntrinsicKey as u32,
+        // Arg 1 = UDS
+        KeyType::UDS as u32,
+        // Arg 2 = size
+        32
+    ];
 
     send_command(port, CommandTag::KeyProvision, args)?;
 
@@ -522,9 +522,7 @@ pub fn do_generate_uds(port: &mut dyn serialport::SerialPort) -> Result<()> {
 }
 
 pub fn do_isp_write_keystore(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()> {
-    let mut args = Vec::new();
-
-    args.push(KeyProvisionCmds::WriteKeyStore as u32);
+    let args = vec![KeyProvisionCmds::WriteKeyStore as u32];
 
     send_command(port, CommandTag::KeyProvision, args)?;
 
@@ -538,9 +536,7 @@ pub fn do_isp_write_keystore(port: &mut dyn serialport::SerialPort, data: Vec<u8
 }
 
 pub fn do_recv_sb_file(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()> {
-    let mut args = Vec::new();
-
-    args.push(data.len() as u32);
+    let args = vec![data.len() as u32];
 
     send_command(port, CommandTag::ReceiveSbFile, args)?;
 
@@ -558,14 +554,14 @@ pub fn do_isp_set_userkey(
     key_type: KeyType,
     data: Vec<u8>,
 ) -> Result<()> {
-    let mut args = Vec::new();
-
-    // Arg0 = Set User Key
-    args.push(KeyProvisionCmds::SetUserKey as u32);
-    // Arg1 =  Key type
-    args.push(key_type as u32);
-    // Arg2 = Key size
-    args.push(data.len() as u32);
+    let args = vec![
+        // Arg0 = Set User Key
+        KeyProvisionCmds::SetUserKey as u32,
+        // Arg1 =  Key type
+        key_type as u32,
+        // Arg2 = Key size
+        data.len() as u32
+    ];
 
     send_command(port, CommandTag::KeyProvision, args)?;
 
@@ -583,11 +579,7 @@ pub fn do_isp_read_memory(
     address: u32,
     cnt: u32,
 ) -> Result<Vec<u8>> {
-    let mut args = Vec::new();
-
-    args.push(address);
-    args.push(cnt);
-    args.push(0x0);
+    let args = vec![address, cnt, 0x0];
 
     send_command(port, CommandTag::ReadMemory, args)?;
 
@@ -614,11 +606,7 @@ pub fn do_isp_write_memory(
     address: u32,
     data: Vec<u8>,
 ) -> Result<()> {
-    let mut args = Vec::new();
-
-    args.push(address);
-    args.push(data.len() as u32);
-    args.push(0x0);
+    let args = vec![address, data.len() as u32, 0x0];
 
     send_command(port, CommandTag::WriteMemory, args)?;
 
@@ -632,10 +620,10 @@ pub fn do_isp_write_memory(
 }
 
 pub fn do_isp_flash_erase_all(port: &mut dyn serialport::SerialPort) -> Result<()> {
-    let mut args: Vec<u32> = Vec::new();
-
-    // Erase internal flash
-    args.push(0x0 as u32);
+    let args = vec![
+        // Erase internal flash
+        0x0_u32
+    ];
 
     send_command(port, CommandTag::FlashEraseAll, args)?;
 
