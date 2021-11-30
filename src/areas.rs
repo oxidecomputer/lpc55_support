@@ -260,6 +260,12 @@ impl SecureBootCfg {
     }
 }
 
+impl Default for SecureBootCfg {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[repr(C)]
 #[derive(Default, Debug, Clone, PackedStruct)]
 #[packed_struct(size_bytes = "512", bit_numbering = "msb0", endian = "lsb")]
@@ -426,6 +432,12 @@ impl RKTHRevoke {
             rotk3: ROTKeyStatus::Invalid.into(),
             _reserved: ReservedZero::<packed_bits::Bits<24>>::default(),
         }
+    }
+}
+
+impl Default for RKTHRevoke {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
