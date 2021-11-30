@@ -268,7 +268,7 @@ pub fn do_ping(port: &mut dyn serialport::SerialPort) -> Result<()> {
 
     let ping_bytes = ping.pack()?;
 
-    port.write(&ping_bytes)?;
+    port.write_all(&ping_bytes)?;
 
     port.flush()?;
 
@@ -293,7 +293,7 @@ fn send_ack(port: &mut dyn serialport::SerialPort) -> Result<()> {
 
     let bytes = packet.pack()?;
 
-    port.write(&bytes)?;
+    port.write_all(&bytes)?;
     port.flush()?;
 
     Ok(())
@@ -445,7 +445,7 @@ fn send_command(
 
     let command_bytes = command.to_bytes()?;
 
-    port.write(&command_bytes)?;
+    port.write_all(&command_bytes)?;
     port.flush()?;
 
     read_ack(port)?;
@@ -466,7 +466,7 @@ fn send_data(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()>
 
         let data_bytes = data_packet.to_bytes()?;
 
-        port.write(&data_bytes)?;
+        port.write_all(&data_bytes)?;
         port.flush()?;
 
         read_ack(port)?;

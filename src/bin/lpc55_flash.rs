@@ -133,7 +133,7 @@ fn main() -> Result<()> {
                 .create(true)
                 .open(&path)?;
 
-            out.write(&m)?;
+            out.write_all(&m)?;
             println!("Output written to {:?}", path);
         }
         ISPCommand::WriteMemory { address, file } => {
@@ -192,7 +192,7 @@ fn main() -> Result<()> {
                 .create(true)
                 .open(&file)?;
 
-            out.write(&m)?;
+            out.write_all(&m)?;
             println!("CMPA Output written to {:?}", file);
         }
         ISPCommand::ReadCFPA { file } => {
@@ -206,7 +206,7 @@ fn main() -> Result<()> {
                 .create(true)
                 .open(&file)?;
 
-            out.write(&m)?;
+            out.write_all(&m)?;
             println!("CFPA Output written to {:?}", file);
         }
         ISPCommand::Restore => {
