@@ -227,7 +227,7 @@ fn main() -> Result<()> {
             let mut offset = 4;
             while offset < 0x130 {
                 byteorder::LittleEndian::write_u32(&mut bytes[offset..offset + 4], 0x00000131);
-                offset = offset + 4;
+                offset += 4;
             }
             // This is two branch to self instructions
             byteorder::LittleEndian::write_u32(&mut bytes[0x130..0x134], 0xe7fee7fe);

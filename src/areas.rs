@@ -511,7 +511,7 @@ pub struct CFPAPage {
 
 impl CFPAPage {
     pub fn update_version(&mut self) {
-        self.version = self.version + 1;
+        self.version += 1;
     }
 
     pub fn update_rkth_revoke(&mut self, rkth: RKTHRevoke) -> Result<()> {
