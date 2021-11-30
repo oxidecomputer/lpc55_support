@@ -207,7 +207,7 @@ impl CommandPacket {
         })
     }
 
-    fn to_bytes(self) -> Result<Vec<u8>> {
+    fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut v = Vec::new();
 
         v.extend_from_slice(&self.packet.pack()?);
@@ -253,7 +253,7 @@ impl DataPacket {
         })
     }
 
-    fn to_bytes(self) -> Result<Vec<u8>> {
+    fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut v = Vec::new();
 
         v.extend_from_slice(&self.packet.pack()?);
