@@ -28,6 +28,10 @@ fn get_pad(val: usize) -> usize {
 //
 // We sign the same data as with RSA.
 
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Path) -> Result<()> {
     let mut bytes = std::fs::read(binary_path)?;
     let image_pad = get_pad(bytes.len());
