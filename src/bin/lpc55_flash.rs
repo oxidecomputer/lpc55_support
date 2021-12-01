@@ -85,7 +85,7 @@ enum ISPCommand {
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "isp")]
-struct ISP {
+struct Isp {
     /// UART port
     #[structopt(name = "port")]
     port: PathBuf,
@@ -99,7 +99,7 @@ struct ISP {
 }
 
 fn main() -> Result<()> {
-    let cmd = ISP::from_args();
+    let cmd = Isp::from_args();
 
     // The target _technically_ has autobaud but it's very flaky
     // and these seem to be the preferred settings
