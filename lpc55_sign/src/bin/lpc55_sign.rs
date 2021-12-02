@@ -20,6 +20,8 @@ enum ImageType {
     /// Generate a secure saigned image and corresponding CMPA region
     #[structopt(name = "signed-image")]
     SignedImage {
+        #[structopt(long)]
+        with_dice: bool,
         #[structopt(parse(from_os_str))]
         src_bin: PathBuf,
         #[structopt(parse(from_os_str))]
@@ -58,13 +60,21 @@ fn main() -> Result<()> {
             println!("Done! CRC image written to {:?}", &dest_bin);
         }
         ImageType::SignedImage {
+            with_dice,
             src_bin,
             priv_key,
             root_cert0,
             dest_bin,
             dest_cmpa,
         } => {
-            signed_image::sign_image(&src_bin, &priv_key, &root_cert0, &dest_bin, &dest_cmpa)?;
+            signed_image::sign_image(
+                with_dice,
+                &src_bin,
+                &priv_key,
+                &root_cert0,
+                &dest_bin,
+                &dest_cmpa,
+            )?;
             println!(
                 "Done! Signed image written to {:?}, CMPA to {:?}",
                 &dest_bin, &dest_cmpa

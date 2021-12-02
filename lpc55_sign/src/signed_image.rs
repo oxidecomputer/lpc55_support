@@ -155,7 +155,7 @@ fn do_signed_image(
     Ok(rkth.as_slice().try_into().expect("something went wrong?"))
 }
 
-fn do_cmpa(cmpa_path: &Path, rkth: &[u8; 32]) -> Result<()> {
+fn do_cmpa(with_dice: bool, cmpa_path: &Path, rkth: &[u8; 32]) -> Result<()> {
     let mut cmpa_out = OpenOptions::new()
         .write(true)
         .truncate(true)
@@ -164,7 +164,11 @@ fn do_cmpa(cmpa_path: &Path, rkth: &[u8; 32]) -> Result<()> {
 
     let mut secure_boot_cfg = SecureBootCfg::new();
 
-    secure_boot_cfg.skip_dice = EnableDiceStatus::DisableDice1.into();
+    if with_dice {
+        secure_boot_cfg.skip_dice = EnableDiceStatus::EnableDice.into();
+    } else {
+        secure_boot_cfg.skip_dice = EnableDiceStatus::DisableDice1.into();
+    }
     secure_boot_cfg.sec_boot_en = SecBootStatus::SignedImage3.into();
 
     let cmpa = CMPAPage::new(secure_boot_cfg)?;
@@ -177,6 +181,7 @@ fn do_cmpa(cmpa_path: &Path, rkth: &[u8; 32]) -> Result<()> {
 }
 
 pub fn sign_image(
+    with_dice: bool,
     src_bin: &Path,
     priv_key: &Path,
     root_cert0: &Path,
@@ -185,7 +190,7 @@ pub fn sign_image(
 ) -> Result<()> {
     let rkth = do_signed_image(src_bin, priv_key, root_cert0, dest_bin)?;
 
-    do_cmpa(cmpa_dest, &rkth)?;
+    do_cmpa(with_dice, cmpa_dest, &rkth)?;
 
     Ok(())
 }
