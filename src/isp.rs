@@ -17,23 +17,23 @@ enum StartByte {
 #[repr(u8)]
 #[derive(Debug)]
 enum PacketType {
-    PacketAck = 0xA1,
-    //PacketNak = 0xA2,
-    PacketAckAbort = 0xA3,
-    PacketCommand = 0xA4,
-    PacketData = 0xA5,
-    PacketPing = 0xA6,
-    PacketPingResponse = 0xA7,
+    Ack = 0xA1,
+    //Nak = 0xA2,
+    AckAbort = 0xA3,
+    Command = 0xA4,
+    Data = 0xA5,
+    Ping = 0xA6,
+    PingResponse = 0xA7,
 }
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
 enum ResponseCode {
-    GenericResponse = 0xA0,
-    ReadMemoryResponse = 0xA3,
-    //GetPropertyResponse = 0xA7,
-    //FlashReadOnceResponse = 0xAF,
-    KeyProvisionResponse = 0xB5,
+    Generic = 0xA0,
+    ReadMemory = 0xA3,
+    //GetProperty = 0xA7,
+    //FlashReadOnce = 0xAF,
+    KeyProvision = 0xB5,
 }
 
 #[repr(u32)]
@@ -175,7 +175,7 @@ pub struct CommandPacket {
 impl CommandPacket {
     fn new_command(c: CommandTag, args: Vec<u32>) -> Result<CommandPacket> {
         let mut v = VariablePacket {
-            packet: FramingPacket::new(PacketType::PacketCommand),
+            packet: FramingPacket::new(PacketType::Command),
             raw_command: RawCommand::new(c, args.len()),
         };
 
@@ -211,7 +211,7 @@ impl CommandPacket {
         })
     }
 
-    fn to_bytes(self) -> Result<Vec<u8>> {
+    fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut v = Vec::new();
 
         v.extend_from_slice(&self.packet.pack()?);
@@ -233,7 +233,7 @@ impl DataPacket {
     fn new_data(args: Vec<u8>) -> Result<DataPacket> {
         let arg_len: u16 = args.len() as u16;
 
-        let mut f = FramingPacket::new(PacketType::PacketData);
+        let mut f = FramingPacket::new(PacketType::Data);
 
         f.length_low = (arg_len & 0xFF) as u8;
         f.length_high = ((arg_len >> 8) & 0xff) as u8;
@@ -257,7 +257,7 @@ impl DataPacket {
         })
     }
 
-    fn to_bytes(self) -> Result<Vec<u8>> {
+    fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut v = Vec::new();
 
         v.extend_from_slice(&self.packet.pack()?);
@@ -268,11 +268,11 @@ impl DataPacket {
 }
 
 pub fn do_ping(port: &mut dyn serialport::SerialPort) -> Result<()> {
-    let ping = PacketHeader::new(PacketType::PacketPing);
+    let ping = PacketHeader::new(PacketType::Ping);
 
     let ping_bytes = ping.pack()?;
 
-    port.write(&ping_bytes)?;
+    port.write_all(&ping_bytes)?;
 
     port.flush()?;
 
@@ -282,7 +282,7 @@ pub fn do_ping(port: &mut dyn serialport::SerialPort) -> Result<()> {
 
     let response = PingResponse::unpack(&response_bytes)?;
 
-    if response.header.packet_type != (PacketType::PacketPingResponse as u8) {
+    if response.header.packet_type != (PacketType::PingResponse as u8) {
         return Err(anyhow!(
             "Incorrect ACK byte from ping {:x}",
             response.header.packet_type
@@ -293,11 +293,11 @@ pub fn do_ping(port: &mut dyn serialport::SerialPort) -> Result<()> {
 }
 
 fn send_ack(port: &mut dyn serialport::SerialPort) -> Result<()> {
-    let packet = PacketHeader::new(PacketType::PacketAck);
+    let packet = PacketHeader::new(PacketType::Ack);
 
     let bytes = packet.pack()?;
 
-    port.write(&bytes)?;
+    port.write_all(&bytes)?;
     port.flush()?;
 
     Ok(())
@@ -311,18 +311,18 @@ fn read_ack(port: &mut dyn serialport::SerialPort) -> Result<()> {
     let ack = PacketHeader::unpack_from_slice(&ack_bytes).unwrap();
 
     // Ack abort comes with a response packet explaining why
-    if ack.packet_type == (PacketType::PacketAckAbort as u8) {
-        read_response(port, ResponseCode::GenericResponse)?
+    if ack.packet_type == (PacketType::AckAbort as u8) {
+        read_response(port, ResponseCode::Generic)?
     }
 
-    if ack.packet_type != (PacketType::PacketAck as u8) {
+    if ack.packet_type != (PacketType::Ack as u8) {
         return Err(anyhow!("Incorrect ACK byte {:x}", ack.packet_type));
     }
 
     Ok(())
 }
 
-fn check_crc(frame_bytes: &Vec<u8>, response: &Vec<u8>, frame: &FramingPacket) -> Result<()> {
+fn check_crc(frame_bytes: &[u8], response: &[u8], frame: &FramingPacket) -> Result<()> {
     let mut crc = CRCu16::crc16xmodem();
     crc.digest(&frame_bytes[..0x4]);
     crc.digest(&frame_bytes[0x6..]);
@@ -355,7 +355,7 @@ fn read_data(port: &mut dyn serialport::SerialPort) -> Result<Vec<u8>> {
 
     let frame = FramingPacket::unpack_from_slice(&frame_bytes).unwrap();
 
-    if frame.header.packet_type != (PacketType::PacketData as u8) {
+    if frame.header.packet_type != (PacketType::Data as u8) {
         return Err(anyhow!(
             "Expected a data packet, got {:x} instead",
             frame.header.packet_type
@@ -390,7 +390,7 @@ fn read_response(port: &mut dyn serialport::SerialPort, response_type: ResponseC
     let frame = FramingPacket::unpack_from_slice(&frame_bytes).unwrap();
 
     // A response packet is a specific type of command packet.
-    if frame.header.packet_type != (PacketType::PacketCommand as u8) {
+    if frame.header.packet_type != (PacketType::Command as u8) {
         return Err(anyhow!(
             "Expected a command, got {:x}",
             frame.header.packet_type
@@ -449,7 +449,7 @@ fn send_command(
 
     let command_bytes = command.to_bytes()?;
 
-    port.write(&command_bytes)?;
+    port.write_all(&command_bytes)?;
     port.flush()?;
 
     read_ack(port)?;
@@ -470,7 +470,7 @@ fn send_data(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()>
 
         let data_bytes = data_packet.to_bytes()?;
 
-        port.write(&data_bytes)?;
+        port.write_all(&data_bytes)?;
         port.flush()?;
 
         read_ack(port)?;
@@ -481,78 +481,74 @@ fn send_data(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()>
 }
 
 pub fn do_save_keystore(port: &mut dyn serialport::SerialPort) -> Result<()> {
-    let mut args: Vec<u32> = Vec::new();
-
-    // Arg 0 =  WriteNonVolatile
-    args.push(KeyProvisionCmds::WriteNonVolatile as u32);
-    // Arg 1 = Memory ID (0 = internal flash)
-    args.push(0);
+    let args = vec![
+        // Arg 0 =  WriteNonVolatile
+        KeyProvisionCmds::WriteNonVolatile as u32,
+        // Arg 1 = Memory ID (0 = internal flash)
+        0
+    ];
 
     send_command(port, CommandTag::KeyProvision, args)?;
 
-    read_response(port, ResponseCode::GenericResponse)?;
+    read_response(port, ResponseCode::Generic)?;
 
     Ok(())
 }
 
 pub fn do_enroll(port: &mut dyn serialport::SerialPort) -> Result<()> {
-    let mut args: Vec<u32> = Vec::new();
-
-    // Arg =  Enroll
-    args.push(KeyProvisionCmds::Enroll as u32);
+    let args = vec![
+        // Arg =  Enroll
+        KeyProvisionCmds::Enroll as u32
+    ];
 
     send_command(port, CommandTag::KeyProvision, args)?;
 
-    read_response(port, ResponseCode::GenericResponse)?;
+    read_response(port, ResponseCode::Generic)?;
 
     Ok(())
 }
 
 pub fn do_generate_uds(port: &mut dyn serialport::SerialPort) -> Result<()> {
-    let mut args: Vec<u32> = Vec::new();
-
-    // Arg 0 =  SetIntrinsicKey
-    args.push(KeyProvisionCmds::SetIntrinsicKey as u32);
-    // Arg 1 = UDS
-    args.push(KeyType::UDS as u32);
-    // Arg 2 = size
-    args.push(32);
+    let args = vec![
+        // Arg 0 =  SetIntrinsicKey
+        KeyProvisionCmds::SetIntrinsicKey as u32,
+        // Arg 1 = UDS
+        KeyType::UDS as u32,
+        // Arg 2 = size
+        32
+    ];
 
     send_command(port, CommandTag::KeyProvision, args)?;
 
-    read_response(port, ResponseCode::GenericResponse)?;
+    read_response(port, ResponseCode::Generic)?;
 
     Ok(())
 }
 
 pub fn do_isp_write_keystore(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()> {
-    let mut args = Vec::new();
-
-    args.push(KeyProvisionCmds::WriteKeyStore as u32);
+    let args = vec![KeyProvisionCmds::WriteKeyStore as u32];
 
     send_command(port, CommandTag::KeyProvision, args)?;
 
-    read_response(port, ResponseCode::KeyProvisionResponse)?;
+    read_response(port, ResponseCode::KeyProvision)?;
 
     send_data(port, data)?;
 
-    read_response(port, ResponseCode::GenericResponse)?;
+    read_response(port, ResponseCode::Generic)?;
 
     Ok(())
 }
 
 pub fn do_recv_sb_file(port: &mut dyn serialport::SerialPort, data: Vec<u8>) -> Result<()> {
-    let mut args = Vec::new();
-
-    args.push(data.len() as u32);
+    let args = vec![data.len() as u32];
 
     send_command(port, CommandTag::ReceiveSbFile, args)?;
 
-    read_response(port, ResponseCode::GenericResponse)?;
+    read_response(port, ResponseCode::Generic)?;
 
     send_data(port, data)?;
 
-    read_response(port, ResponseCode::GenericResponse)?;
+    read_response(port, ResponseCode::Generic)?;
 
     Ok(())
 }
@@ -562,22 +558,22 @@ pub fn do_isp_set_userkey(
     key_type: KeyType,
     data: Vec<u8>,
 ) -> Result<()> {
-    let mut args = Vec::new();
-
-    // Arg0 = Set User Key
-    args.push(KeyProvisionCmds::SetUserKey as u32);
-    // Arg1 =  Key type
-    args.push(key_type as u32);
-    // Arg2 = Key size
-    args.push(data.len() as u32);
+    let args = vec![
+        // Arg0 = Set User Key
+        KeyProvisionCmds::SetUserKey as u32,
+        // Arg1 =  Key type
+        key_type as u32,
+        // Arg2 = Key size
+        data.len() as u32
+    ];
 
     send_command(port, CommandTag::KeyProvision, args)?;
 
-    read_response(port, ResponseCode::KeyProvisionResponse)?;
+    read_response(port, ResponseCode::KeyProvision)?;
 
     send_data(port, data)?;
 
-    read_response(port, ResponseCode::GenericResponse)?;
+    read_response(port, ResponseCode::Generic)?;
 
     Ok(())
 }
@@ -587,15 +583,11 @@ pub fn do_isp_read_memory(
     address: u32,
     cnt: u32,
 ) -> Result<Vec<u8>> {
-    let mut args = Vec::new();
-
-    args.push(address);
-    args.push(cnt);
-    args.push(0x0);
+    let args = vec![address, cnt, 0x0];
 
     send_command(port, CommandTag::ReadMemory, args)?;
 
-    read_response(port, ResponseCode::ReadMemoryResponse)?;
+    read_response(port, ResponseCode::ReadMemory)?;
 
     let mut data = Vec::new();
     let mut received: usize = 0;
@@ -608,7 +600,7 @@ pub fn do_isp_read_memory(
         received += d.len();
     }
 
-    read_response(port, ResponseCode::GenericResponse)?;
+    read_response(port, ResponseCode::Generic)?;
 
     Ok(data)
 }
@@ -618,32 +610,28 @@ pub fn do_isp_write_memory(
     address: u32,
     data: Vec<u8>,
 ) -> Result<()> {
-    let mut args = Vec::new();
-
-    args.push(address);
-    args.push(data.len() as u32);
-    args.push(0x0);
+    let args = vec![address, data.len() as u32, 0x0];
 
     send_command(port, CommandTag::WriteMemory, args)?;
 
-    read_response(port, ResponseCode::GenericResponse)?;
+    read_response(port, ResponseCode::Generic)?;
 
     send_data(port, data)?;
 
-    read_response(port, ResponseCode::GenericResponse)?;
+    read_response(port, ResponseCode::Generic)?;
 
     Ok(())
 }
 
 pub fn do_isp_flash_erase_all(port: &mut dyn serialport::SerialPort) -> Result<()> {
-    let mut args: Vec<u32> = Vec::new();
-
-    // Erase internal flash
-    args.push(0x0 as u32);
+    let args = vec![
+        // Erase internal flash
+        0x0_u32
+    ];
 
     send_command(port, CommandTag::FlashEraseAll, args)?;
 
-    read_response(port, ResponseCode::GenericResponse)?;
+    read_response(port, ResponseCode::Generic)?;
 
     Ok(())
 }

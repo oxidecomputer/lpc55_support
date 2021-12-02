@@ -11,7 +11,7 @@ use structopt::StructOpt;
 enum ImageType {
     /// Generate a non-secure CRC image
     #[structopt(name = "crc")]
-    CRC {
+    Crc {
         #[structopt(parse(from_os_str))]
         src_bin: PathBuf,
         #[structopt(parse(from_os_str))]
@@ -53,7 +53,7 @@ fn main() -> Result<()> {
     let cmd = Images::from_args();
 
     match cmd.cmd {
-        ImageType::CRC { src_bin, dest_bin } => {
+        ImageType::Crc { src_bin, dest_bin } => {
             crc_image::update_crc(&src_bin, &dest_bin)?;
             println!("Done! CRC image written to {:?}", &dest_bin);
         }

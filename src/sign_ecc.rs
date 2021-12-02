@@ -110,7 +110,7 @@ fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Pa
     }
     out.write_all(&new_cert_header.pack()?)?;
     out.write_u32::<byteorder::LittleEndian>((verify_key_point.len()) as u32)?;
-    out.write_all(&verify_key_point.as_bytes())?;
+    out.write_all(verify_key_point.as_bytes())?;
     if cert_pad > 0 {
         out.write_all(&vec![0; cert_pad])?;
     }
@@ -142,5 +142,5 @@ fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Pa
 }
 
 pub fn ecc_sign_image(src_bin: &Path, priv_key: &Path, dest_bin: &Path) -> Result<()> {
-    do_ecc_sign_image(&src_bin, &priv_key, &dest_bin)
+    do_ecc_sign_image(src_bin, priv_key, dest_bin)
 }

@@ -177,9 +177,9 @@ pub fn sign_image(
     dest_bin: &Path,
     cmpa_dest: &Path,
 ) -> Result<()> {
-    let rkth = do_signed_image(&src_bin, &priv_key, &root_cert0, &dest_bin)?;
+    let rkth = do_signed_image(src_bin, priv_key, root_cert0, dest_bin)?;
 
-    do_cmpa(&cmpa_dest, &rkth)?;
+    do_cmpa(cmpa_dest, &rkth)?;
 
     Ok(())
 }

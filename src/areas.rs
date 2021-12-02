@@ -264,6 +264,12 @@ impl SecureBootCfg {
     }
 }
 
+impl Default for SecureBootCfg {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[repr(C)]
 #[derive(Default, Debug, Clone, PackedStruct)]
 #[packed_struct(size_bytes = "512", bit_numbering = "msb0", endian = "lsb")]
@@ -336,19 +342,18 @@ pub struct CMPAPage {
 
 impl CMPAPage {
     pub fn new(sec_boot_cfg: SecureBootCfg) -> Result<CMPAPage> {
-        let mut p = CMPAPage::default();
-
-        // We're very deliberate about using from_be_bytes here despite
-        // the fact that this is technically going to be an le integer.
-        // packed_struct does not handle endian byte swapping for structres
-        // and the spreadsheet given by NXP gives everything in little
-        // endian form. Many other fields in the structure are marked
-        // little endian so to avoid a double endian swap here we store
-        // the integer as big endian and let the pack() function swap the
-        // endian for us.
-        p.secure_boot_cfg = u32::from_be_bytes(sec_boot_cfg.pack()?);
-
-        Ok(p)
+        Ok(CMPAPage {
+            // We're very deliberate about using from_be_bytes here despite
+            // the fact that this is technically going to be an le integer.
+            // packed_struct does not handle endian byte swapping for structres
+            // and the spreadsheet given by NXP gives everything in little
+            // endian form. Many other fields in the structure are marked
+            // little endian so to avoid a double endian swap here we store
+            // the integer as big endian and let the pack() function swap the
+            // endian for us.
+            secure_boot_cfg: u32::from_be_bytes(sec_boot_cfg.pack()?),
+            ..Default::default()
+        })
     }
 }
 
@@ -434,6 +439,12 @@ impl RKTHRevoke {
     }
 }
 
+impl Default for RKTHRevoke {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Debug, PackedStruct, Default)]
 #[repr(C)]
 #[packed_struct(size_bytes = "512", bit_numbering = "msb0", endian = "msb")]
@@ -515,7 +526,7 @@ pub struct CFPAPage {
 
 impl CFPAPage {
     pub fn update_version(&mut self) {
-        self.version = self.version + 1;
+        self.version += 1;
     }
 
     pub fn update_rkth_revoke(&mut self, rkth: RKTHRevoke) -> Result<()> {

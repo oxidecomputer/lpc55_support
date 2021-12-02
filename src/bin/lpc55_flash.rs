@@ -89,7 +89,7 @@ enum ISPCommand {
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "isp")]
-struct ISP {
+struct Isp {
     /// UART port
     #[structopt(name = "port")]
     port: PathBuf,
@@ -103,17 +103,18 @@ struct ISP {
 }
 
 fn main() -> Result<()> {
-    let cmd = ISP::from_args();
+    let cmd = Isp::from_args();
 
     // The target _technically_ has autobaud but it's very flaky
     // and these seem to be the preferred settings
-    let mut settings: SerialPortSettings = Default::default();
-    settings.timeout = Duration::from_millis(1000);
-    settings.baud_rate = cmd.baud_rate;
-    settings.data_bits = DataBits::Eight;
-    settings.flow_control = FlowControl::None;
-    settings.parity = Parity::None;
-    settings.stop_bits = StopBits::One;
+    let settings = SerialPortSettings {
+        timeout: Duration::from_millis(1000),
+        baud_rate: cmd.baud_rate,
+        data_bits: DataBits::Eight,
+        flow_control: FlowControl::None,
+        parity: Parity::None,
+        stop_bits: StopBits::One
+    };
 
     let mut port = serialport::open_with_settings(&cmd.port, &settings)?;
 
@@ -137,7 +138,7 @@ fn main() -> Result<()> {
                 .create(true)
                 .open(&path)?;
 
-            out.write(&m)?;
+            out.write_all(&m)?;
             println!("Output written to {:?}", path);
         }
         ISPCommand::WriteMemory { address, file } => {
@@ -196,7 +197,7 @@ fn main() -> Result<()> {
                 .create(true)
                 .open(&file)?;
 
-            out.write(&m)?;
+            out.write_all(&m)?;
             println!("CMPA Output written to {:?}", file);
         }
         ISPCommand::ReadCFPA { file } => {
@@ -210,7 +211,7 @@ fn main() -> Result<()> {
                 .create(true)
                 .open(&file)?;
 
-            out.write(&m)?;
+            out.write_all(&m)?;
             println!("CFPA Output written to {:?}", file);
         }
         ISPCommand::Restore => {
@@ -231,7 +232,7 @@ fn main() -> Result<()> {
             let mut offset = 4;
             while offset < 0x130 {
                 byteorder::LittleEndian::write_u32(&mut bytes[offset..offset + 4], 0x00000131);
-                offset = offset + 4;
+                offset += 4;
             }
             // This is two branch to self instructions
             byteorder::LittleEndian::write_u32(&mut bytes[0x130..0x134], 0xe7fee7fe);
