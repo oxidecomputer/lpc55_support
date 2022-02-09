@@ -12,21 +12,21 @@ use sha2::Digest;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
-use structopt::StructOpt;
+use clap::Parser;
 
-#[derive(StructOpt)]
-#[structopt(name = "cfpa_setup", max_term_width = 80)]
+#[derive(Parser)]
+#[clap(name = "cfpa_setup", max_term_width = 80)]
 struct Args {
     /// UART port
-    #[structopt(name = "port", parse(from_os_str))]
+    #[clap(name = "port", parse(from_os_str))]
     isp_port: PathBuf,
     /// Optional out file for the CFPA region
-    #[structopt(name = "outfile", parse(from_os_str))]
+    #[clap(name = "outfile", parse(from_os_str))]
     outfile: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
-    let args = Args::from_args();
+    let args = Args::parse();
 
     // The target _technically_ has autobaud but it's very flaky
     // and these seem to be the preferred settings
