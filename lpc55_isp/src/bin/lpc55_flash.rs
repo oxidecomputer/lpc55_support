@@ -10,58 +10,58 @@ use serialport::{DataBits, FlowControl, Parity, SerialPortSettings, StopBits};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::Duration;
-use structopt::StructOpt;
+use clap::Parser;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 enum ISPCommand {
     /// Runs a single ping to verify communication with the target
-    #[structopt(name = "ping")]
+    #[clap(name = "ping")]
     Ping,
     /// Reads memory from the specified address and saves it at the path
-    #[structopt(name = "read-memory")]
+    #[clap(name = "read-memory")]
     ReadMemory {
-        #[structopt(parse(try_from_str = parse_int::parse))]
+        #[clap(parse(try_from_str = parse_int::parse))]
         address: u32,
-        #[structopt(parse(try_from_str = parse_int::parse))]
+        #[clap(parse(try_from_str = parse_int::parse))]
         count: u32,
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         path: PathBuf,
     },
     /// Write the file to the specified address
-    #[structopt(name = "write-memory")]
+    #[clap(name = "write-memory")]
     WriteMemory {
-        #[structopt(parse(try_from_str = parse_int::parse))]
+        #[clap(parse(try_from_str = parse_int::parse))]
         address: u32,
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     /// Erases all non-secure flash. This MUST be done before writing!
-    #[structopt(name = "flash-erase-all")]
+    #[clap(name = "flash-erase-all")]
     FlashEraseAll,
     /// Write a file to the CMPA region
-    #[structopt(name = "write-cmpa")]
+    #[clap(name = "write-cmpa")]
     WriteCMPA {
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     /// Erase the CMPA region (use to boot non-secure binaries again)
-    #[structopt(name = "erase-cmpa")]
+    #[clap(name = "erase-cmpa")]
     EraseCMPA,
     /// Save the CMPA region to a file
     ReadCMPA {
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     /// Save the CFPA region to a file
     ReadCFPA {
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     /// Put a minimalist program on to allow attaching via SWD
     Restore,
     /// Send SB update file
     SendSBUpdate {
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     /// Set up key store this involves
@@ -70,7 +70,7 @@ enum ISPCommand {
     /// - Setting SBKEK
     /// - Writing to persistent storage
     SetupKeyStore {
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     /// Trigger a new enrollment in the PUF
@@ -83,28 +83,28 @@ enum ISPCommand {
     EraseKeyStore,
     /// Set the SBKEK, required for SB Updates
     SetSBKek {
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     GetProperty {
-        #[structopt(parse(try_from_str))]
+        #[clap(parse(try_from_str))]
         prop: BootloaderProperty,
     },
     LastError,
 }
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "isp")]
+#[derive(Debug, Parser)]
+#[clap(name = "isp")]
 struct Isp {
     /// UART port
-    #[structopt(name = "port")]
+    #[clap(name = "port")]
     port: PathBuf,
     /// How fast to run the UART. 57,600 baud seems very reliable but is rather
     /// slow. In certain test setups we've gotten rates of up to 1Mbaud to work
     /// reliably -- your mileage may vary!
-    #[structopt(short = "b", default_value = "57600")]
+    #[clap(short = 'b', default_value = "57600")]
     baud_rate: u32,
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     cmd: ISPCommand,
 }
 
@@ -225,7 +225,7 @@ fn pretty_print_error(params: Vec<u32>) {
 }
 
 fn main() -> Result<()> {
-    let cmd = Isp::from_args();
+    let cmd = Isp::parse();
 
     // The target _technically_ has autobaud but it's very flaky
     // and these seem to be the preferred settings

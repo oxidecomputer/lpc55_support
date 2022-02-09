@@ -5,54 +5,54 @@
 use anyhow::Result;
 use lpc55_sign::{crc_image, sign_ecc, signed_image};
 use std::path::PathBuf;
-use structopt::StructOpt;
+use clap::Parser;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 enum ImageType {
     /// Generate a non-secure CRC image
-    #[structopt(name = "crc")]
+    #[clap(name = "crc")]
     Crc {
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         src_bin: PathBuf,
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         dest_bin: PathBuf,
     },
     /// Generate a secure saigned image and corresponding CMPA region
-    #[structopt(name = "signed-image")]
+    #[clap(name = "signed-image")]
     SignedImage {
-        #[structopt(long)]
+        #[clap(long)]
         with_dice: bool,
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         src_bin: PathBuf,
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         priv_key: PathBuf,
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         root_cert0: PathBuf,
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         dest_bin: PathBuf,
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         dest_cmpa: PathBuf,
     },
-    #[structopt(name = "ecc-image")]
+    #[clap(name = "ecc-image")]
     EccImage {
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         src_bin: PathBuf,
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         priv_key: PathBuf,
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         dest_bin: PathBuf,
     },
 }
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "images")]
+#[derive(Debug, Parser)]
+#[clap(name = "images")]
 struct Images {
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     cmd: ImageType,
 }
 
 fn main() -> Result<()> {
-    let cmd = Images::from_args();
+    let cmd = Images::parse();
 
     match cmd.cmd {
         ImageType::Crc { src_bin, dest_bin } => {
