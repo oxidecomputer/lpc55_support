@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use anyhow::Result;
+use clap::Parser;
 use lpc55_isp::cmd::{do_isp_read_memory, do_isp_write_memory};
 use lpc55_isp::isp::do_ping;
 use lpc55_sign::areas::*;
@@ -12,7 +13,6 @@ use sha2::Digest;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
-use clap::Parser;
 
 #[derive(Parser)]
 #[clap(name = "cfpa_setup", max_term_width = 80)]
