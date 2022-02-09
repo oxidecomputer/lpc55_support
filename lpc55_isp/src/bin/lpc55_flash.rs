@@ -4,13 +4,13 @@
 
 use anyhow::Result;
 use byteorder::ByteOrder;
+use clap::Parser;
 use lpc55_isp::cmd::*;
 use lpc55_isp::isp::{do_ping, BootloaderProperty, KeyType};
 use serialport::{DataBits, FlowControl, Parity, SerialPortSettings, StopBits};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::Duration;
-use clap::Parser;
 
 #[derive(Debug, Parser)]
 enum ISPCommand {

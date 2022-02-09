@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use anyhow::Result;
+use clap::Parser;
 use lpc55_sign::{crc_image, sign_ecc, signed_image};
 use std::path::PathBuf;
-use clap::Parser;
 
 #[derive(Debug, Parser)]
 enum ImageType {
