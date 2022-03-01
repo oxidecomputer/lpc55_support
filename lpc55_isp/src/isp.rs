@@ -543,9 +543,9 @@ pub fn recv_data(port: &mut dyn serialport::SerialPort, cnt: u32) -> Result<Vec<
         data.extend_from_slice(&d);
 
         received += d.len();
-    }
 
-    read_response(port, ResponseCode::Generic)?;
+        send_ack(port)?;
+    }
 
     Ok(data)
 }
