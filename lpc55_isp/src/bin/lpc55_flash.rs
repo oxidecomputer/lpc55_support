@@ -54,7 +54,8 @@ enum ISPCommand {
     EraseCMPA,
     /// Save the CMPA region to a file
     ReadCMPA {
-        file: PathBuf,
+        /// Write to FILE, or stdout if omitted
+        file: Option<PathBuf>,
     },
     /// Save the CFPA region to a file
     ReadCFPA {
@@ -326,14 +327,19 @@ fn main() -> Result<()> {
 
             let m = do_isp_read_memory(&mut *port, 0x9e400, 512)?;
 
-            let mut out = std::fs::OpenOptions::new()
-                .write(true)
-                .truncate(true)
-                .create(true)
-                .open(&file)?;
+            let mut out = match file {
+                Some(ref path) => Box::new(
+                    std::fs::OpenOptions::new()
+                        .write(true)
+                        .truncate(true)
+                        .create(true)
+                        .open(&path)?,
+                ) as Box<dyn Write>,
+                None => Box::new(std::io::stdout()) as Box<dyn Write>,
+            };
 
             out.write_all(&m)?;
-            println!("CMPA Output written to {:?}", file);
+            eprintln!("CMPA Output written to {:?}", file);
         }
         ISPCommand::ReadCFPA { file } => {
             do_ping(&mut *port)?;
