@@ -172,6 +172,14 @@ pub enum EnableDiceStatus {
 }
 
 #[derive(PrimitiveEnum, Copy, Clone, Debug)]
+pub enum DiceIncSecEpoch {
+    NotIncluded = 0x0,
+    Included1 = 0x1,
+    Included2 = 0x2,
+    Included3 = 0x3,
+}
+
+#[derive(PrimitiveEnum, Copy, Clone, Debug)]
 pub enum TZMImageStatus {
     InImageHeader = 0x0,
     DisableTZM = 0x1,
@@ -236,8 +244,8 @@ pub struct SecureBootCfg {
     pub block_enroll: EnumCatchAll<EnrollStatus>,
 
     /// Undocumented?
-    #[packed_field(bits = "14..=15")]
-    pub dice_inc_sec_epoch: ReservedZero<packed_bits::Bits<2>>,
+    #[packed_field(ty = "enum", bits = "14..=15")]
+    pub dice_inc_sec_epoch: EnumCatchAll<DiceIncSecEpoch>,
 
     #[packed_field(bits = "29..=16")]
     _reserved: ReservedZero<packed_bits::Bits<14>>,
@@ -257,7 +265,7 @@ impl SecureBootCfg {
             tzm_image_type: TZMImageStatus::InImageHeader.into(),
             block_set_key: SetKeyStatus::EnableKeyCode.into(),
             block_enroll: EnrollStatus::EnableEnroll.into(),
-            dice_inc_sec_epoch: ReservedZero::<packed_bits::Bits<2>>::default(),
+            dice_inc_sec_epoch: DiceIncSecEpoch::NotIncluded.into(),
             _reserved: ReservedZero::<packed_bits::Bits<14>>::default(),
             sec_boot_en: SecBootStatus::PlainImage.into(),
         }

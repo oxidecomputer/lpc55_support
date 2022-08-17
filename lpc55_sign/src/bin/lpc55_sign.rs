@@ -22,6 +22,12 @@ enum ImageType {
     SignedImage {
         #[clap(long)]
         with_dice: bool,
+        #[clap(long)]
+        with_dice_inc_nxp_cfg: bool,
+        #[clap(long)]
+        with_dice_cust_cfg: bool,
+        #[clap(long)]
+        with_dice_inc_sec_epoch: bool,
         #[clap(parse(from_os_str))]
         src_bin: PathBuf,
         #[clap(parse(from_os_str))]
@@ -61,19 +67,28 @@ fn main() -> Result<()> {
         }
         ImageType::SignedImage {
             with_dice,
+            with_dice_inc_nxp_cfg,
+            with_dice_cust_cfg,
+            with_dice_inc_sec_epoch,
             src_bin,
             priv_key,
             root_cert0,
             dest_bin,
             dest_cmpa,
         } => {
-            signed_image::sign_image(
-                with_dice,
+            let rkth = signed_image::sign_image(
                 &src_bin,
                 &priv_key,
                 &root_cert0,
                 &dest_bin,
-                &dest_cmpa,
+            )?;
+            signed_image::create_cmpa(
+                with_dice,
+                with_dice_inc_nxp_cfg,
+                with_dice_cust_cfg,
+                with_dice_inc_sec_epoch,
+                &rkth,
+                &dest_cmpa
             )?;
             println!(
                 "Done! Signed image written to {:?}, CMPA to {:?}",
