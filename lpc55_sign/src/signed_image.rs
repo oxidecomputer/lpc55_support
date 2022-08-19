@@ -21,7 +21,7 @@ fn get_pad(val: usize) -> usize {
     }
 }
 
-fn do_signed_image(
+pub fn sign_image(
     binary_path: &Path,
     priv_key_path: &Path,
     root_cert0_path: &Path,
@@ -155,7 +155,14 @@ fn do_signed_image(
     Ok(rkth.as_slice().try_into().expect("something went wrong?"))
 }
 
-fn do_cmpa(with_dice: bool, cmpa_path: &Path, rkth: &[u8; 32]) -> Result<()> {
+pub fn create_cmpa(
+    with_dice: bool,
+    with_dice_inc_nxp_cfg: bool,
+    with_dice_cust_cfg: bool,
+    with_dice_inc_sec_epoch: bool,
+    rkth: &[u8; 32],
+    cmpa_path: &Path,
+) -> Result<()> {
     let mut cmpa_out = OpenOptions::new()
         .write(true)
         .truncate(true)
@@ -169,6 +176,18 @@ fn do_cmpa(with_dice: bool, cmpa_path: &Path, rkth: &[u8; 32]) -> Result<()> {
     } else {
         secure_boot_cfg.skip_dice = EnableDiceStatus::DisableDice1.into();
     }
+
+    // fields are disabled by default
+    if with_dice_inc_nxp_cfg {
+        secure_boot_cfg.dice_inc_nxp_cfg = DiceNXPIncStatus::Included1.into();
+    }
+    if with_dice_cust_cfg {
+        secure_boot_cfg.dice_cust_cfg = DiceCustIncStatus::Included1.into();
+    }
+    if with_dice_inc_sec_epoch {
+        secure_boot_cfg.dice_inc_sec_epoch = DiceIncSecEpoch::Included1.into();
+    }
+
     secure_boot_cfg.sec_boot_en = SecBootStatus::SignedImage3.into();
 
     let cmpa = CMPAPage::new(secure_boot_cfg)?;
@@ -177,20 +196,5 @@ fn do_cmpa(with_dice: bool, cmpa_path: &Path, rkth: &[u8; 32]) -> Result<()> {
 
     cmpa_bytes[0x50..0x70].clone_from_slice(rkth);
     cmpa_out.write_all(&cmpa_bytes)?;
-    Ok(())
-}
-
-pub fn sign_image(
-    with_dice: bool,
-    src_bin: &Path,
-    priv_key: &Path,
-    root_cert0: &Path,
-    dest_bin: &Path,
-    cmpa_dest: &Path,
-) -> Result<()> {
-    let rkth = do_signed_image(src_bin, priv_key, root_cert0, dest_bin)?;
-
-    do_cmpa(with_dice, cmpa_dest, &rkth)?;
-
     Ok(())
 }
