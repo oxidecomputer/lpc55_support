@@ -5,7 +5,7 @@
 use crate::areas::*;
 use anyhow::Result;
 use byteorder::{ByteOrder, WriteBytesExt};
-use rsa::{pkcs1::FromRsaPrivateKey, pkcs1::FromRsaPublicKey, PublicKeyParts};
+use rsa::{pkcs1::DecodeRsaPrivateKey, pkcs1::DecodeRsaPublicKey, PublicKeyParts};
 use sha2::Digest;
 
 use packed_struct::prelude::*;
