@@ -8,7 +8,7 @@ use lpc55_isp::cmd::{do_isp_read_memory, do_isp_write_memory};
 use lpc55_isp::isp::do_ping;
 use lpc55_sign::areas::*;
 use packed_struct::prelude::*;
-use serialport::{DataBits, FlowControl, Parity, SerialPortSettings, StopBits};
+use serialport::{DataBits, FlowControl, Parity, StopBits};
 use sha2::Digest;
 use std::io::Write;
 use std::path::PathBuf;
@@ -18,8 +18,8 @@ use std::time::Duration;
 #[clap(name = "cfpa_setup", max_term_width = 80)]
 struct Args {
     /// UART port
-    #[clap(name = "port", parse(from_os_str))]
-    isp_port: PathBuf,
+    #[clap(name = "port")]
+    isp_port: String,
     /// Optional out file for the CFPA region
     #[clap(name = "outfile", parse(from_os_str))]
     outfile: Option<PathBuf>,
@@ -30,18 +30,17 @@ fn main() -> Result<()> {
 
     // The target _technically_ has autobaud but it's very flaky
     // and these seem to be the preferred settings
-    let settings = SerialPortSettings {
-        timeout: Duration::from_millis(1000),
-        baud_rate: 57600,
-        data_bits: DataBits::Eight,
-        flow_control: FlowControl::None,
-        parity: Parity::None,
-        stop_bits: StopBits::One,
-    };
+    // TODO: unwrap is most certainly not the right thing to do here
+    // if serialport::new can't take a PathBuf why take this param as one?
+    let mut port = serialport::new(&args.isp_port, 57600)
+        .timeout(Duration::from_millis(1000))
+        .data_bits(DataBits::Eight)
+        .flow_control(FlowControl::None)
+        .parity(Parity::None)
+        .stop_bits(StopBits::One)
+        .open()?;
 
-    let mut port = serialport::open_with_settings(&args.isp_port, &settings)?;
-
-    do_ping(&mut *port)?;
+    do_ping(port.as_mut())?;
 
     // 0x9de00 is the fixed address of the CFPA region
     let m = do_isp_read_memory(&mut *port, 0x9de00, 512)?;

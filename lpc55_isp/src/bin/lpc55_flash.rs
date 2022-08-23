@@ -7,7 +7,7 @@ use byteorder::ByteOrder;
 use clap::Parser;
 use lpc55_isp::cmd::*;
 use lpc55_isp::isp::{do_ping, BootloaderProperty, KeyType};
-use serialport::{DataBits, FlowControl, Parity, SerialPortSettings, StopBits};
+use serialport::{DataBits, FlowControl, Parity, StopBits};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -98,7 +98,7 @@ enum ISPCommand {
 struct Isp {
     /// UART port
     #[clap(name = "port")]
-    port: PathBuf,
+    port: String,
     /// How fast to run the UART. 57,600 baud seems very reliable but is rather
     /// slow. In certain test setups we've gotten rates of up to 1Mbaud to work
     /// reliably -- your mileage may vary!
@@ -229,16 +229,13 @@ fn main() -> Result<()> {
 
     // The target _technically_ has autobaud but it's very flaky
     // and these seem to be the preferred settings
-    let settings = SerialPortSettings {
-        timeout: Duration::from_millis(1000),
-        baud_rate: cmd.baud_rate,
-        data_bits: DataBits::Eight,
-        flow_control: FlowControl::None,
-        parity: Parity::None,
-        stop_bits: StopBits::One,
-    };
-
-    let mut port = serialport::open_with_settings(&cmd.port, &settings)?;
+    let mut port = serialport::new(&cmd.port, cmd.baud_rate)
+        .timeout(Duration::from_millis(1000))
+        .data_bits(DataBits::Eight)
+        .flow_control(FlowControl::None)
+        .parity(Parity::None)
+        .stop_bits(StopBits::One)
+        .open()?;
 
     match cmd.cmd {
         ISPCommand::Ping => {
