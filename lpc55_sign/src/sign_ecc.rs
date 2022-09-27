@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::areas::*;
+use lpc55_areas::*;
 use anyhow::Result;
 use byteorder::{ByteOrder, WriteBytesExt};
 use elliptic_curve::generic_array::typenum::Unsigned;

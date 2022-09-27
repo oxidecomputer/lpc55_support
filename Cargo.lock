@@ -466,6 +466,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "lpc55_areas"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "byteorder",
+ "hex",
+ "num-derive",
+ "num-traits",
+ "packed_struct",
+ "packed_struct_codegen",
+ "parse_int",
+]
+
+[[package]]
 name = "lpc55_isp"
 version = "0.1.0"
 dependencies = [
@@ -474,7 +488,7 @@ dependencies = [
  "clap",
  "crc-any",
  "hex",
- "lpc55_sign",
+ "lpc55_areas",
  "num-derive",
  "num-traits",
  "packed_struct",
@@ -497,6 +511,7 @@ dependencies = [
  "ecdsa",
  "elliptic-curve",
  "hex",
+ "lpc55_areas",
  "p256",
  "packed_struct",
  "packed_struct_codegen",
