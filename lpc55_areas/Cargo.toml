@@ -1,5 +1,5 @@
 [package]
-name = "lpc55_isp"
+name = "lpc55_areas"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,18 +9,11 @@ edition = "2021"
 packed_struct = "0.10.0"
 packed_struct_codegen = "0.10.0"
 anyhow = "1.0.32"
-serialport = "4.2.0"
-crc-any = "2.3.5"
 byteorder = "1.3.4"
-clap = { version = "3.0.14", features = ["derive"] }
 hex = "0.4.3"
 parse_int = "0.4.0"
-lpc55_areas = { path = "../lpc55_areas", features = [] }
-sha2 = "0.9.8"
 num-derive = { version = "0.3.0", features = [ "full-syntax" ] }
 num-traits = "0.2.14"
-strum = "0.22"
-strum_macros = "0.22"
 
 [features]
 default = ["binaries"]
@@ -29,15 +22,3 @@ binaries = []
 [lib]
 test = false
 bench = false
-
-[[bin]]
-name = "lpc55_flash"
-test = false
-bench = false
-required-features = ["binaries"]
-
-[[bin]]
-name = "cfpa-update"
-test = false
-bench = false
-required-features = ["binaries"]
