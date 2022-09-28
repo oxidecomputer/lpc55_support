@@ -2,10 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use lpc55_areas::{BootField, BootImageType};
 use anyhow::Result;
 use byteorder::ByteOrder;
 use crc_any::CRCu32;
+use lpc55_areas::{BootField, BootImageType};
 use packed_struct::prelude::*;
 use std::path::Path;
 

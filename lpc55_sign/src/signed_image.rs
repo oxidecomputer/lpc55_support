@@ -2,9 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use lpc55_areas::*;
 use anyhow::Result;
 use byteorder::{ByteOrder, WriteBytesExt};
+use lpc55_areas::*;
 use rsa::{pkcs1::DecodeRsaPrivateKey, pkcs1::DecodeRsaPublicKey, PublicKeyParts};
 use sha2::Digest;
 

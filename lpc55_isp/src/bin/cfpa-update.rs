@@ -4,9 +4,9 @@
 
 use anyhow::Result;
 use clap::Parser;
+use lpc55_areas::*;
 use lpc55_isp::cmd::{do_isp_read_memory, do_isp_write_memory};
 use lpc55_isp::isp::do_ping;
-use lpc55_areas::*;
 use packed_struct::prelude::*;
 use serialport::{DataBits, FlowControl, Parity, StopBits};
 use std::io::Write;
