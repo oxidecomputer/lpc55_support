@@ -171,30 +171,19 @@ pub fn create_cmpa(
 
     let mut secure_boot_cfg = SecureBootCfg::new();
 
-    if with_dice {
-        secure_boot_cfg.skip_dice = EnableDiceStatus::EnableDice.into();
-    } else {
-        secure_boot_cfg.skip_dice = EnableDiceStatus::DisableDice1.into();
-    }
+    secure_boot_cfg.set_dice(with_dice);
+    secure_boot_cfg.set_dice_inc_nxp_cfg(with_dice_inc_nxp_cfg);
+    secure_boot_cfg.set_dice_inc_cust_cfg(with_dice_cust_cfg);
+    secure_boot_cfg.set_dice_inc_sec_epoch(with_dice_inc_sec_epoch);
+    secure_boot_cfg.set_sec_boot(true);
 
-    // fields are disabled by default
-    if with_dice_inc_nxp_cfg {
-        secure_boot_cfg.dice_inc_nxp_cfg = DiceNXPIncStatus::Included1.into();
-    }
-    if with_dice_cust_cfg {
-        secure_boot_cfg.dice_cust_cfg = DiceCustIncStatus::Included1.into();
-    }
-    if with_dice_inc_sec_epoch {
-        secure_boot_cfg.dice_inc_sec_epoch = DiceIncSecEpoch::Included1.into();
-    }
+    let mut cmpa = CMPAPage::new();
 
-    secure_boot_cfg.sec_boot_en = SecBootStatus::SignedImage3.into();
+    cmpa.set_secure_boot_cfg(secure_boot_cfg)?;
+    cmpa.set_rotkh(rkth);
 
-    let cmpa = CMPAPage::new(secure_boot_cfg)?;
+    let cmpa_bytes = cmpa.pack()?;
 
-    let mut cmpa_bytes = cmpa.pack()?;
-
-    cmpa_bytes[0x50..0x70].clone_from_slice(rkth);
     cmpa_out.write_all(&cmpa_bytes)?;
     Ok(())
 }
