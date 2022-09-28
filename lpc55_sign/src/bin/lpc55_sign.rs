@@ -76,19 +76,14 @@ fn main() -> Result<()> {
             dest_bin,
             dest_cmpa,
         } => {
-            let rkth = signed_image::sign_image(
-                &src_bin,
-                &priv_key,
-                &root_cert0,
-                &dest_bin,
-            )?;
+            let rkth = signed_image::sign_image(&src_bin, &priv_key, &root_cert0, &dest_bin)?;
             signed_image::create_cmpa(
                 with_dice,
                 with_dice_inc_nxp_cfg,
                 with_dice_cust_cfg,
                 with_dice_inc_sec_epoch,
                 &rkth,
-                &dest_cmpa
+                &dest_cmpa,
             )?;
             println!(
                 "Done! Signed image written to {:?}, CMPA to {:?}",

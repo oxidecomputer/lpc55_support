@@ -272,9 +272,94 @@ impl SecureBootCfg {
     }
 }
 
+impl SecureBootCfg {
+    pub fn set_dice(&mut self, use_dice: bool) {
+        if use_dice {
+            self.skip_dice = EnableDiceStatus::EnableDice.into();
+        } else {
+            self.skip_dice = EnableDiceStatus::DisableDice1.into();
+        }
+    }
+
+    pub fn set_dice_inc_nxp_cfg(&mut self, use_nxp_cfg: bool) {
+        if use_nxp_cfg {
+            self.dice_inc_nxp_cfg = DiceNXPIncStatus::Included1.into();
+        }
+    }
+
+    pub fn set_dice_inc_cust_cfg(&mut self, use_cust_cfg: bool) {
+        if use_cust_cfg {
+            self.dice_cust_cfg = DiceCustIncStatus::Included1.into();
+        }
+    }
+
+    pub fn set_dice_inc_sec_epoch(&mut self, inc_sec_epoch: bool) {
+        if inc_sec_epoch {
+            self.dice_inc_sec_epoch = DiceIncSecEpoch::Included1.into();
+        }
+    }
+
+    pub fn set_sec_boot(&mut self, sec_boot: bool) {
+        if sec_boot {
+            self.sec_boot_en = SecBootStatus::SignedImage3.into();
+        }
+    }
+}
+
 impl Default for SecureBootCfg {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// Fields omitted for those parts we really don't care about
+#[derive(PrimitiveEnum, Copy, Clone, Debug)]
+pub enum DefaultIsp {
+    Auto = 0b000,
+    Uart = 0b010,
+    Diabled = 0b111,
+}
+
+#[derive(PrimitiveEnum, Copy, Clone, Debug)]
+pub enum BootSpeed {
+    Nmpa = 0b00,
+    Fro48mhz = 0b01,
+    Fro96mhz = 0b10,
+}
+
+#[derive(Debug, Clone, PackedStruct)]
+#[packed_struct(size_bytes = "4", endian = "lsb", bit_numbering = "lsb0")]
+pub struct BootCfg {
+    #[packed_field(bits = "3..=0")]
+    _reserved1: ReservedZero<packed_bits::Bits<4>>,
+
+    // Default ISP mode, can later be enabled via debug auth
+    #[packed_field(ty = "enum", bits = "4..=6")]
+    pub default_isp: EnumCatchAll<DefaultIsp>,
+
+    // Default setting for the main system clock
+    #[packed_field(ty = "enum", bits = "7..=8")]
+    pub boot_speed: EnumCatchAll<BootSpeed>,
+
+    // Technically the boot failure pin is also in this field but it's
+    // extremely unlikely to be useful to us
+    #[packed_field(bits = "31..=9")]
+    _reserved: ReservedZero<packed_bits::Bits<23>>,
+}
+
+impl BootCfg {
+    fn new(default_isp: DefaultIsp, boot_speed: BootSpeed) -> Self {
+        BootCfg {
+            default_isp: packed_struct::EnumCatchAll::Enum(default_isp),
+            boot_speed: packed_struct::EnumCatchAll::Enum(boot_speed),
+            ..Default::default()
+        }
+    }
+}
+
+impl Default for BootCfg {
+    fn default() -> Self {
+        Self::new(DefaultIsp::Auto, BootSpeed::Nmpa)
     }
 }
 
@@ -321,14 +406,7 @@ pub struct CMPAPage {
     blank1: [u8; 0x14],
 
     // The hash of the RoT keys
-    rotkh7: u32,
-    rotkh6: u32,
-    rotkh5: u32,
-    rotkh4: u32,
-    rotkh3: u32,
-    rotkh2: u32,
-    rotkh1: u32,
-    rotkh0: u32,
+    rotkh: [u8; 32],
 
     // For debugging we split up the blank area
     blank2: [u8; 32],
@@ -349,19 +427,34 @@ pub struct CMPAPage {
 }
 
 impl CMPAPage {
-    pub fn new(sec_boot_cfg: SecureBootCfg) -> Result<CMPAPage> {
-        Ok(CMPAPage {
-            // We're very deliberate about using from_be_bytes here despite
-            // the fact that this is technically going to be an le integer.
-            // packed_struct does not handle endian byte swapping for structres
-            // and the spreadsheet given by NXP gives everything in little
-            // endian form. Many other fields in the structure are marked
-            // little endian so to avoid a double endian swap here we store
-            // the integer as big endian and let the pack() function swap the
-            // endian for us.
-            secure_boot_cfg: u32::from_be_bytes(sec_boot_cfg.pack()?),
+    pub fn new() -> Self {
+        CMPAPage {
             ..Default::default()
-        })
+        }
+    }
+
+    // We're very deliberate about using from_be_bytes here despite
+    // the fact that this is technically going to be an le integer.
+    // packed_struct does not handle endian byte swapping for structres
+    // and the spreadsheet given by NXP gives everything in little
+    // endian form. Many other fields in the structure are marked
+    // little endian so to avoid a double endian swap here we store
+    // the integer as big endian and let the pack() function swap the
+    // endian for us.
+
+    pub fn set_secure_boot_cfg(&mut self, sec_boot_cfg: SecureBootCfg) -> Result<()> {
+        self.secure_boot_cfg = u32::from_be_bytes(sec_boot_cfg.pack()?);
+        Ok(())
+    }
+
+    pub fn set_boot_cfg(&mut self, default_isp: DefaultIsp, boot_speed: BootSpeed) -> Result<()> {
+        let cfg = BootCfg::new(default_isp, boot_speed);
+        self.boot_cfg = u32::from_be_bytes(cfg.pack()?);
+        Ok(())
+    }
+
+    pub fn set_rotkh(&mut self, rotkh: &[u8; 32]) {
+        self.rotkh.clone_from_slice(rotkh);
     }
 }
 
@@ -443,6 +536,42 @@ impl RKTHRevoke {
             rotk2: ROTKeyStatus::Invalid.into(),
             rotk3: ROTKeyStatus::Invalid.into(),
             _reserved: ReservedZero::<packed_bits::Bits<24>>::default(),
+        }
+    }
+
+    pub fn enable_keys(&mut self, key0: bool, key1: bool, key2: bool, key3: bool) {
+        if key0 {
+            self.rotk0 = ROTKeyStatus::Enabled.into();
+        }
+
+        if key1 {
+            self.rotk1 = ROTKeyStatus::Enabled.into();
+        }
+
+        if key2 {
+            self.rotk2 = ROTKeyStatus::Enabled.into();
+        }
+
+        if key3 {
+            self.rotk3 = ROTKeyStatus::Enabled.into();
+        }
+    }
+
+    pub fn revoke_keys(&mut self, key0: bool, key1: bool, key2: bool, key3: bool) {
+        if key0 {
+            self.rotk0 = ROTKeyStatus::Revoked2.into();
+        }
+
+        if key1 {
+            self.rotk1 = ROTKeyStatus::Revoked2.into();
+        }
+
+        if key2 {
+            self.rotk2 = ROTKeyStatus::Revoked2.into();
+        }
+
+        if key3 {
+            self.rotk3 = ROTKeyStatus::Revoked2.into();
         }
     }
 }
