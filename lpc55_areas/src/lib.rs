@@ -348,7 +348,7 @@ pub struct BootCfg {
 }
 
 impl BootCfg {
-    fn new(default_isp: DefaultIsp, boot_speed: BootSpeed) -> Self {
+    pub fn new(default_isp: DefaultIsp, boot_speed: BootSpeed) -> Self {
         BootCfg {
             default_isp: packed_struct::EnumCatchAll::Enum(default_isp),
             boot_speed: packed_struct::EnumCatchAll::Enum(boot_speed),
