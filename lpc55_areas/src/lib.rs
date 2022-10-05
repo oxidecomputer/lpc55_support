@@ -456,6 +456,12 @@ impl CMPAPage {
     pub fn set_rotkh(&mut self, rotkh: &[u8; 32]) {
         self.rotkh.clone_from_slice(rotkh);
     }
+
+    pub fn to_vec(&mut self) -> Result<Vec<u8>> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&self.pack()?);
+        Ok(bytes)
+    }
 }
 
 #[derive(Clone, Debug, PackedStruct)]
@@ -678,5 +684,11 @@ impl CFPAPage {
         self.rkth_revoke = u32::from_be_bytes(rkth.pack()?);
 
         Ok(())
+    }
+
+    pub fn to_vec(&mut self) -> Result<Vec<u8>> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&self.pack()?);
+        Ok(bytes)
     }
 }
