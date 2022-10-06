@@ -352,14 +352,9 @@ impl BootCfg {
         BootCfg {
             default_isp: packed_struct::EnumCatchAll::Enum(default_isp),
             boot_speed: packed_struct::EnumCatchAll::Enum(boot_speed),
-            ..Default::default()
+            _reserved1: ReservedZero::<packed_bits::Bits<4>>::default(),
+            _reserved: ReservedZero::<packed_bits::Bits<23>>::default(),
         }
-    }
-}
-
-impl Default for BootCfg {
-    fn default() -> Self {
-        Self::new(DefaultIsp::Auto, BootSpeed::Nmpa)
     }
 }
 
