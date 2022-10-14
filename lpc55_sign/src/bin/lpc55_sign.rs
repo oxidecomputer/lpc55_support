@@ -4,6 +4,7 @@
 
 use anyhow::Result;
 use clap::Parser;
+use lpc55_sign::signed_image::CfgFile;
 use lpc55_sign::{crc_image, sign_ecc, signed_image};
 use std::path::PathBuf;
 
@@ -16,6 +17,24 @@ enum ImageType {
         src_bin: PathBuf,
         #[clap(parse(from_os_str))]
         dest_bin: PathBuf,
+    },
+    ChainedImage {
+        #[clap(long)]
+        with_dice: bool,
+        #[clap(long)]
+        with_dice_inc_nxp_cfg: bool,
+        #[clap(long)]
+        with_dice_cust_cfg: bool,
+        #[clap(long)]
+        with_dice_inc_sec_epoch: bool,
+        #[clap(parse(from_os_str))]
+        src_bin: PathBuf,
+        #[clap(parse(from_os_str))]
+        cfg: PathBuf,
+        #[clap(parse(from_os_str))]
+        dest_bin: PathBuf,
+        #[clap(parse(from_os_str))]
+        dest_cmpa: PathBuf,
     },
     /// Generate a secure saigned image and corresponding CMPA region
     #[clap(name = "signed-image")]
@@ -64,6 +83,34 @@ fn main() -> Result<()> {
         ImageType::Crc { src_bin, dest_bin } => {
             crc_image::update_crc(&src_bin, &dest_bin)?;
             println!("Done! CRC image written to {:?}", &dest_bin);
+        }
+        ImageType::ChainedImage {
+            with_dice,
+            with_dice_inc_nxp_cfg,
+            with_dice_cust_cfg,
+            with_dice_inc_sec_epoch,
+            src_bin,
+            cfg,
+            dest_bin,
+            dest_cmpa,
+        } => {
+            let cfg_contents = std::fs::read(&cfg)?;
+            let toml: CfgFile = toml::from_slice(&cfg_contents)?;
+
+            let rkth = signed_image::sign_chain(&src_bin, None, &toml.certs, &dest_bin)?;
+            signed_image::create_cmpa(
+                with_dice,
+                with_dice_inc_nxp_cfg,
+                with_dice_cust_cfg,
+                with_dice_inc_sec_epoch,
+                &rkth,
+                &dest_cmpa,
+            )?;
+
+            println!(
+                "Done! Signed image written to {:?}, CMPA to {:?}",
+                &dest_bin, &dest_cmpa
+            );
         }
         ImageType::SignedImage {
             with_dice,
