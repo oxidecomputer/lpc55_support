@@ -457,6 +457,11 @@ impl CMPAPage {
         bytes.extend_from_slice(&self.pack()?);
         Ok(bytes)
     }
+
+    pub fn from_bytes(b: &[u8; 512]) -> Result<Self> {
+        let s = Self::unpack(b)?;
+        Ok(s)
+    }
 }
 
 #[derive(Clone, Debug, PackedStruct)]
@@ -685,5 +690,10 @@ impl CFPAPage {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.pack()?);
         Ok(bytes)
+    }
+
+    pub fn from_bytes(b: &[u8; 512]) -> Result<Self> {
+        let s = Self::unpack(b)?;
+        Ok(s)
     }
 }
