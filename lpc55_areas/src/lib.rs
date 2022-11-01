@@ -364,61 +364,61 @@ impl BootCfg {
 pub struct CMPAPage {
     // Features settings such as a boot failure pin, boot speed and
     // default ISP mode. Okay to leave at 0x0
-    boot_cfg: u32,
+    pub boot_cfg: u32,
 
     // Undocumented what this does
-    spi_flash_cfg: u32,
+    pub spi_flash_cfg: u32,
 
     // Can set vendor/product ID
-    usb_id: u32,
+    pub usb_id: u32,
 
     // Undocumented what this does
-    sdio_cfg: u32,
+    pub sdio_cfg: u32,
 
     // Can turn off various peripherals.
-    cc_socu_pin: u32,
+    pub cc_socu_pin: u32,
 
-    cc_socu_dflt: u32,
+    pub cc_socu_dflt: u32,
 
     // Related to secure debug
-    vendor_usage: u32,
+    pub vendor_usage: u32,
 
     // Sets boot mode
-    secure_boot_cfg: u32,
+    pub secure_boot_cfg: u32,
 
     // prince settings
-    prince_base_addr: u32,
-    prince_sr_0: u32,
-    prince_sr_1: u32,
-    prince_sr_2: u32,
+    pub prince_base_addr: u32,
+    pub prince_sr_0: u32,
+    pub prince_sr_1: u32,
+    pub prince_sr_2: u32,
 
     // These are listed in the manual but not documented at all
-    xtal_32khz_capabank_trim: u32,
-    xtal_16khz_capabank_trim: u32,
+    pub xtal_32khz_capabank_trim: u32,
+    pub xtal_16khz_capabank_trim: u32,
 
-    flash_remap_size: u32,
+    pub flash_remap_size: u32,
 
-    blank1: [u8; 0x14],
+    pub blank1: [u8; 0x14],
 
     // The hash of the RoT keys
-    rotkh: [u8; 32],
+    pub rotkh: [u8; 32],
 
     // For debugging we split up the blank area
-    blank2: [u8; 32],
-    blank3: [u8; 32],
-    blank4: [u8; 32],
-    blank5: [u8; 32],
-    blank6: [u8; 16],
-    customer_defined0: [u8; 32],
-    customer_defined1: [u8; 32],
-    customer_defined2: [u8; 32],
-    customer_defined3: [u8; 32],
-    customer_defined4: [u8; 32],
-    customer_defined5: [u8; 32],
-    customer_defined6: [u8; 32],
+    pub blank2: [u8; 32],
+    pub blank3: [u8; 32],
+    pub blank4: [u8; 32],
+    pub blank5: [u8; 32],
+    pub blank6: [u8; 16],
+    pub customer_defined0: [u8; 32],
+    pub customer_defined1: [u8; 32],
+    pub customer_defined2: [u8; 32],
+    pub customer_defined3: [u8; 32],
+    pub customer_defined4: [u8; 32],
+    pub customer_defined5: [u8; 32],
+    pub customer_defined6: [u8; 32],
     // !!! DO NOT WRITE THIS !!!
     // This will prevent re-writing!
-    sha256_digest: [u8; 32],
+    pub sha256_digest: [u8; 32],
 }
 
 impl CMPAPage {
@@ -593,12 +593,12 @@ impl Default for RKTHRevoke {
 #[packed_struct(size_bytes = "512", bit_numbering = "msb0", endian = "msb")]
 pub struct CFPAPage {
     // Unclear what this header does. Leaving as 0 is fine
-    header: u32,
+    pub header: u32,
 
     // Monotonically incrementing version counter. This
     // _must_ be incremented on every update!
     #[packed_field(endian = "lsb")]
-    version: u32,
+    pub version: u32,
 
     // Both fields are related to signed update (sb2)
     // loading. This must be equal or lower than the
@@ -607,64 +607,64 @@ pub struct CFPAPage {
     pub secure_firmware_version: u32,
 
     #[packed_field(endian = "lsb")]
-    ns_fw_version: u32,
+    pub ns_fw_version: u32,
 
     // Used to revoke certificates, see 7.3.2.1.2 for
     // details. Keep as 0 for now.
     #[packed_field(endian = "lsb")]
-    image_key_revoke: u32,
+    pub image_key_revoke: u32,
 
     #[packed_field(endian = "lsb")]
-    reserved: u32,
+    pub reserved: u32,
 
     #[packed_field(endian = "lsb")]
-    rkth_revoke: u32,
+    pub rkth_revoke: u32,
 
     // Used for debug authentication
     #[packed_field(endian = "lsb")]
-    vendor: u32,
+    pub vendor: u32,
 
     // Turn peripherals off and on. Leaving as default
     // leaves everything enabled.
     #[packed_field(endian = "lsb")]
-    dcfg_cc_socu_ns_pin: u32,
+    pub dcfg_cc_socu_ns_pin: u32,
     #[packed_field(endian = "lsb")]
-    dcfg_cc_socu_ns_dflt: u32,
+    pub dcfg_cc_socu_ns_dflt: u32,
 
     // Set fault analysis mode
-    enable_fa_mode: u32,
+    pub enable_fa_mode: u32,
 
     // From the sheet
     // "CMPA Page programming on going. This field shall be set to 0x5CC55AA5
     // in the active CFPA page each time CMPA page programming is going on. It
     // shall always be set to 0x00000000 in the CFPA scratch area.
-    cmpa_prog_in_progress: u32,
+    pub cmpa_prog_in_progress: u32,
 
     // prince security codes. These are split up to get around rust's
     // limitation of 256 byte arrays
-    prince_region0_code0: [u8; 0x20],
-    prince_region0_code1: [u8; 0x18],
-    prince_region1_code0: [u8; 0x20],
-    prince_region1_code1: [u8; 0x18],
-    prince_region2_code0: [u8; 0x20],
-    prince_region2_code1: [u8; 0x18],
+    pub prince_region0_code0: [u8; 0x20],
+    pub prince_region0_code1: [u8; 0x18],
+    pub prince_region1_code0: [u8; 0x20],
+    pub prince_region1_code1: [u8; 0x18],
+    pub prince_region2_code0: [u8; 0x20],
+    pub prince_region2_code1: [u8; 0x18],
 
     // More blank space!
-    mysterious1: [u8; 0x20],
-    mysterious2: [u8; 0x8],
+    pub mysterious1: [u8; 0x20],
+    pub mysterious2: [u8; 0x8],
 
     // Rust doesn't like using bit arrays for debugging so
     // split this up
-    customer_defined0: [u8; 32],
-    customer_defined1: [u8; 32],
-    customer_defined2: [u8; 32],
-    customer_defined3: [u8; 32],
-    customer_defined4: [u8; 32],
-    customer_defined5: [u8; 32],
-    customer_defined6: [u8; 32],
+    pub customer_defined0: [u8; 32],
+    pub customer_defined1: [u8; 32],
+    pub customer_defined2: [u8; 32],
+    pub customer_defined3: [u8; 32],
+    pub customer_defined4: [u8; 32],
+    pub customer_defined5: [u8; 32],
+    pub customer_defined6: [u8; 32],
 
     // This needs to be updated every time
-    sha256_digest: [u8; 32],
+    pub sha256_digest: [u8; 32],
 }
 
 impl CFPAPage {
