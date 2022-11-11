@@ -38,101 +38,141 @@ impl BootField {
     }
 }
 
-/// All of these have
-/// 0 = use DAP to enable, 1 = fixed state
-#[repr(C)]
-#[derive(Default, Debug, Clone, PackedStruct)]
-#[packed_struct(size_bytes = "4", endian = "msb", bit_numbering = "msb0")]
-pub struct CCSOCUPin {
-    /// Non secure noninvasive debug
-    #[packed_field(bits = "0")]
-    niden: bool,
-
-    /// Non secure debug enable
-    #[packed_field(bits = "1")]
-    dbgen: bool,
-
-    /// Secure non invasive debug
-    #[packed_field(bits = "2")]
-    spniden: bool,
-
-    /// Secure invaisve debug
-    #[packed_field(bits = "3")]
-    spiden: bool,
-
-    /// JTAG TAP
-    #[packed_field(bits = "4")]
-    tapen: bool,
-
-    /// micro CM33 debug
-    #[packed_field(bits = "5")]
-    mcm33_dbg_en: bool,
-
-    /// ISP command
-    #[packed_field(bits = "6")]
-    isp_cmd_en: bool,
-
-    /// Fault Analysis
-    #[packed_field(bits = "7")]
-    fa_cmd_en: bool,
-
-    /// Flash Mass Erase
-    #[packed_field(bits = "8")]
-    me_cmd_en: bool,
-
-    /// micro CM33 non-invasive debug
-    #[packed_field(bits = "9")]
-    mcm33_nid_en: bool,
-
-    /// Enforce UUID Match during debug auth
-    #[packed_field(bits = "15")]
-    uuid_check: bool,
+// We designate bit 0 for DFLT and bit 1 for PIN
+#[derive(PrimitiveEnum, Copy, Clone, Debug)]
+#[repr(u32)]
+pub enum DebugFieldSetting {
+    AlwaysEnabled = 0b11,
+    DebugAuth = 0b00,
+    AlwaysDisabled = 0b10,
 }
 
-/// All of these have
-/// 0 = disabled, 1 = enabled
-#[derive(Default, Debug, Clone, PackedStruct)]
-#[packed_struct(size_bytes = "4", bit_numbering = "msb0")]
-pub struct CCSOCUDFLT {
-    /// Non secure noninvasive debug
-    #[packed_field(bits = "0")]
-    niden: bool,
+impl DebugFieldSetting {
+    fn dflt(&self) -> bool {
+        ((*self as u32) & 1) == 1
+    }
 
-    /// Non secure debug enable
-    #[packed_field(bits = "1")]
-    dbgen: bool,
+    fn pin(&self) -> bool {
+        (((*self as u32) & 2) >> 1) == 1
+    }
+}
 
-    /// Secure non invasive debug
-    #[packed_field(bits = "2")]
-    spniden: bool,
+#[derive(Copy, Clone, Debug)]
+pub struct DebugSettings {
+    // The matrix of debug settings for CPU0
+    pub non_invasive_debug: DebugFieldSetting,
+    pub invasive_debug: DebugFieldSetting,
+    pub secure_non_invasive_debug: DebugFieldSetting,
+    pub secure_invasive_debug: DebugFieldSetting,
+    // JTAG/TAP access
+    pub tap_enable: DebugFieldSetting,
+    // CPU1 debugging
+    pub cpu1_dbg_enable: DebugFieldSetting,
+    // ISP allowed via debug mailbox
+    pub isp_enable: DebugFieldSetting,
+    // fault analysis/mass erase enable
+    pub fa_me_enable: DebugFieldSetting,
+    // CPU1 non-invasive debugging
+    pub cpu1_non_invasive_enable: DebugFieldSetting,
+    // require exact UUID match
+    pub uuid_check: bool,
+}
 
-    /// Secure invaisve debug
-    #[packed_field(bits = "3")]
-    spiden: bool,
+impl DebugSettings {
+    pub fn new() -> Self {
+        DebugSettings {
+            non_invasive_debug: DebugFieldSetting::AlwaysEnabled,
+            invasive_debug: DebugFieldSetting::AlwaysEnabled,
+            secure_non_invasive_debug: DebugFieldSetting::AlwaysEnabled,
+            secure_invasive_debug: DebugFieldSetting::AlwaysEnabled,
+            tap_enable: DebugFieldSetting::AlwaysEnabled,
+            cpu1_dbg_enable: DebugFieldSetting::AlwaysEnabled,
+            isp_enable: DebugFieldSetting::AlwaysEnabled,
+            fa_me_enable: DebugFieldSetting::AlwaysEnabled,
+            cpu1_non_invasive_enable: DebugFieldSetting::AlwaysEnabled,
+            uuid_check: false,
+        }
+    }
 
-    /// JTAG TAP
-    #[packed_field(bits = "4")]
-    tapen: bool,
+    pub fn pin(&self) -> u32 {
+        let mut pin = CCSOCUPin(0);
 
-    /// micro CM33 debug
-    #[packed_field(bits = "5")]
-    mcm33_dbg_en: bool,
+        pin.set_non_invasive_debug(self.non_invasive_debug.pin());
+        pin.set_invasive_debug(self.invasive_debug.pin());
+        pin.set_secure_invasive_debug(self.secure_invasive_debug.pin());
+        pin.set_secure_non_invasive_debug(self.secure_non_invasive_debug.pin());
+        pin.set_tap_enable(self.tap_enable.pin());
+        pin.set_cpu1_dbg_enable(self.cpu1_dbg_enable.pin());
+        pin.set_isp_enable(self.isp_enable.pin());
+        pin.set_fa_me_enable(self.fa_me_enable.pin());
+        pin.set_cpu1_non_invasive_enable(self.cpu1_non_invasive_enable.pin());
+        pin.set_uuid_check(self.uuid_check);
 
-    /// ISP command
-    #[packed_field(bits = "6")]
-    isp_cmd_en: bool,
+        pin.invert_field()
+    }
 
-    /// Fault Analysis
-    #[packed_field(bits = "7")]
-    fa_cmd_en: bool,
+    pub fn dflt(&self) -> u32 {
+        let mut dflt = CCSOCUDflt(0);
 
-    /// Flash Mass Erase
-    #[packed_field(bits = "8")]
-    me_cmd_en: bool,
+        dflt.set_non_invasive_debug(self.non_invasive_debug.dflt());
+        dflt.set_invasive_debug(self.invasive_debug.dflt());
+        dflt.set_secure_invasive_debug(self.secure_invasive_debug.dflt());
+        dflt.set_secure_non_invasive_debug(self.secure_non_invasive_debug.dflt());
+        dflt.set_tap_enable(self.tap_enable.dflt());
+        dflt.set_cpu1_dbg_enable(self.cpu1_dbg_enable.dflt());
+        dflt.set_isp_enable(self.isp_enable.dflt());
+        dflt.set_fa_me_enable(self.fa_me_enable.dflt());
+        dflt.set_cpu1_non_invasive_enable(self.cpu1_non_invasive_enable.dflt());
 
-    /// micro CM33 non-invasive debug
-    #[packed_field(bits = "9")]
-    mcm33_nid_en: bool,
+        dflt.invert_field()
+    }
+}
+
+impl Default for DebugSettings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+bitfield::bitfield! {
+    struct CCSOCUPin(u32);
+    pub non_invasive_debug, set_non_invasive_debug: 0;
+    pub invasive_debug, set_invasive_debug: 1;
+    pub secure_non_invasive_debug, set_secure_non_invasive_debug: 2;
+    pub secure_invasive_debug, set_secure_invasive_debug: 3;
+    pub tap_enable, set_tap_enable: 4;
+    pub cpu1_dbg_enable, set_cpu1_dbg_enable: 5;
+    pub isp_enable, set_isp_enable: 6;
+    pub fa_me_enable, set_fa_me_enable: 7;
+    pub cpu1_non_invasive_enable, set_cpu1_non_invasive_enable: 9;
+    pub uuid_check, set_uuid_check: 15;
+}
+
+impl CCSOCUPin {
+    pub fn invert_field(&self) -> u32 {
+        let bottom = self.0 & 0xffff;
+        (!bottom << 16) | bottom
+    }
+}
+
+bitfield::bitfield! {
+    struct CCSOCUDflt(u32);
+    pub non_invasive_debug, set_non_invasive_debug: 0;
+    pub invasive_debug, set_invasive_debug: 1;
+    pub secure_non_invasive_debug, set_secure_non_invasive_debug: 2;
+    pub secure_invasive_debug, set_secure_invasive_debug: 3;
+    pub tap_enable, set_tap_enable: 4;
+    pub cpu1_dbg_enable, set_cpu1_dbg_enable: 5;
+    pub isp_enable, set_isp_enable: 6;
+    pub fa_me_enable, set_fa_me_enable: 7;
+    pub cpu1_non_invasive_enable, set_cpu1_non_invasive_enable: 9;
+}
+
+impl CCSOCUDflt {
+    pub fn invert_field(&self) -> u32 {
+        let bottom = self.0 & 0xffff;
+        (!bottom << 16) | bottom
+    }
 }
 
 // Enums for the fields in SECURE_BOOT_CFG
@@ -428,6 +468,12 @@ impl CMPAPage {
         }
     }
 
+    pub fn set_debug_fields(&mut self, settings: DebugSettings) -> Result<()> {
+        self.cc_socu_pin = settings.pin();
+        self.cc_socu_dflt = settings.dflt();
+        Ok(())
+    }
+
     // We're very deliberate about using from_be_bytes here despite
     // the fact that this is technically going to be an le integer.
     // packed_struct does not handle endian byte swapping for structres
@@ -670,6 +716,12 @@ pub struct CFPAPage {
 impl CFPAPage {
     pub fn update_version(&mut self) {
         self.version += 1;
+    }
+
+    pub fn set_debug_fields(&mut self, settings: DebugSettings) -> Result<()> {
+        self.dcfg_cc_socu_ns_pin = settings.pin();
+        self.dcfg_cc_socu_ns_dflt = settings.dflt();
+        Ok(())
     }
 
     pub fn update_rkth_revoke(&mut self, rkth: RKTHRevoke) -> Result<()> {
