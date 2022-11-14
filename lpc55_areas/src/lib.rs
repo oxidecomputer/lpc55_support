@@ -50,6 +50,10 @@ pub enum DebugFieldSetting {
 }
 
 impl DebugFieldSetting {
+    fn always_enabled() -> Self {
+        Self::AlwaysEnabled
+    }
+
     fn dflt(&self) -> bool {
         ((*self as u32) & 1) == 1
     }
@@ -63,21 +67,31 @@ impl DebugFieldSetting {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct DebugSettings {
     // The matrix of debug settings for CPU0
+    #[serde(default = "DebugFieldSetting::always_enabled")]
     pub non_invasive_debug: DebugFieldSetting,
+    #[serde(default = "DebugFieldSetting::always_enabled")]
     pub invasive_debug: DebugFieldSetting,
+    #[serde(default = "DebugFieldSetting::always_enabled")]
     pub secure_non_invasive_debug: DebugFieldSetting,
+    #[serde(default = "DebugFieldSetting::always_enabled")]
     pub secure_invasive_debug: DebugFieldSetting,
     // JTAG/TAP access
+    #[serde(default = "DebugFieldSetting::always_enabled")]
     pub tap_enable: DebugFieldSetting,
     // CPU1 debugging
+    #[serde(default = "DebugFieldSetting::always_enabled")]
     pub cpu1_dbg_enable: DebugFieldSetting,
     // ISP allowed via debug mailbox
+    #[serde(default = "DebugFieldSetting::always_enabled")]
     pub isp_enable: DebugFieldSetting,
     // fault analysis/mass erase enable
+    #[serde(default = "DebugFieldSetting::always_enabled")]
     pub fa_me_enable: DebugFieldSetting,
     // CPU1 non-invasive debugging
+    #[serde(default = "DebugFieldSetting::always_enabled")]
     pub cpu1_non_invasive_enable: DebugFieldSetting,
     // require exact UUID match
+    #[serde(default)]
     pub uuid_check: bool,
 }
 
