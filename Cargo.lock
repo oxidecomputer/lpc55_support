@@ -484,6 +484,7 @@ dependencies = [
  "packed_struct",
  "packed_struct_codegen",
  "parse_int",
+ "serde",
 ]
 
 [[package]]

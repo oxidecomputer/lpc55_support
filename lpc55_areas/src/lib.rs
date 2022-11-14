@@ -4,6 +4,7 @@
 
 use anyhow::Result;
 use packed_struct::prelude::*;
+use serde::Deserialize;
 
 // Table 183, section 7.3.4
 #[derive(PrimitiveEnum, Copy, Clone, Debug)]
@@ -39,7 +40,8 @@ impl BootField {
 }
 
 // We designate bit 0 for DFLT and bit 1 for PIN
-#[derive(PrimitiveEnum, Copy, Clone, Debug)]
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 #[repr(u32)]
 pub enum DebugFieldSetting {
     AlwaysEnabled = 0b11,
@@ -57,7 +59,8 @@ impl DebugFieldSetting {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct DebugSettings {
     // The matrix of debug settings for CPU0
     pub non_invasive_debug: DebugFieldSetting,

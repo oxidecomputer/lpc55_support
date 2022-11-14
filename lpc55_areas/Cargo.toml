@@ -15,6 +15,7 @@ parse_int = "0.4.0"
 num-derive = { version = "0.3.0", features = [ "full-syntax" ] }
 num-traits = "0.2.14"
 bitfield = "0.14.0"
+serde = { version = "1.0.114", features = ["derive"] }
 
 [features]
 default = ["binaries"]
