@@ -370,11 +370,18 @@ impl Default for SecureBootCfg {
 }
 
 // Fields omitted for those parts we really don't care about
-#[derive(PrimitiveEnum, Copy, Clone, Debug)]
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum DefaultIsp {
     Auto = 0b000,
     Uart = 0b010,
     Diabled = 0b111,
+}
+
+impl DefaultIsp {
+    pub fn auto() -> Self {
+        Self::Auto
+    }
 }
 
 #[derive(PrimitiveEnum, Copy, Clone, Debug)]
@@ -569,12 +576,23 @@ impl CertHeader {
     }
 }
 
-#[derive(PrimitiveEnum, Copy, Clone, Debug)]
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum ROTKeyStatus {
     Invalid = 0x0,
     Enabled = 0x1,
     Revoked1 = 0x2,
     Revoked2 = 0x3,
+}
+
+impl ROTKeyStatus {
+    pub fn invalid() -> Self {
+        Self::Invalid
+    }
+
+    pub fn enabled() -> Self {
+        Self::Enabled
+    }
 }
 
 #[derive(Clone, Debug, PackedStruct)]
