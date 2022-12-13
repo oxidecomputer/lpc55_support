@@ -5,7 +5,9 @@
 use anyhow::{anyhow, Result};
 use byteorder::{ByteOrder, WriteBytesExt};
 use lpc55_areas::*;
-use rsa::{pkcs1::DecodeRsaPrivateKey, pkcs1::DecodeRsaPublicKey, PublicKeyParts};
+use rsa::{
+    pkcs1::DecodeRsaPrivateKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePrivateKey, PublicKeyParts,
+};
 use sha2::Digest;
 
 use packed_struct::prelude::*;
@@ -190,7 +192,8 @@ pub fn sign_chain(
     img_hash.update(&sign_bytes);
 
     let priv_key_path = signing_chain.priv_key.as_ref().unwrap();
-    let priv_key = rsa::RsaPrivateKey::read_pkcs1_pem_file(prefix.join(priv_key_path))?;
+    let priv_key = rsa::RsaPrivateKey::read_pkcs1_pem_file(prefix.join(priv_key_path))
+        .or_else(|_| rsa::RsaPrivateKey::read_pkcs8_pem_file(prefix.join(priv_key_path)))?;
 
     let sig = priv_key.sign(
         rsa::padding::PaddingScheme::PKCS1v15Sign {
@@ -223,7 +226,8 @@ pub fn sign_image(
     let mut bytes = std::fs::read(binary_path)?;
     let image_pad = get_pad(bytes.len());
 
-    let priv_key = rsa::RsaPrivateKey::read_pkcs1_pem_file(priv_key_path)?;
+    let priv_key = rsa::RsaPrivateKey::read_pkcs1_pem_file(priv_key_path)
+        .or_else(|_| rsa::RsaPrivateKey::read_pkcs8_pem_file(priv_key_path))?;
 
     let root0_bytes = std::fs::read(root_cert0_path)?;
     let cert_pad = get_pad(root0_bytes.len());
