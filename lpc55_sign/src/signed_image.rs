@@ -379,6 +379,8 @@ pub fn create_cmpa(
     cmpa.set_secure_boot_cfg(secure_boot_cfg)?;
     cmpa.set_rotkh(rkth);
 
+    cmpa.set_debug_fields(DebugSettings::new())?;
+    cmpa.set_boot_cfg(DefaultIsp::Auto, BootSpeed::Fro96mhz)?;
     let cmpa_bytes = cmpa.pack()?;
 
     cmpa_out.write_all(&cmpa_bytes)?;
