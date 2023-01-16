@@ -62,6 +62,7 @@ pub enum KeyProvisionCmds {
 #[derive(Debug)]
 pub enum CommandTag {
     FlashEraseAll = 0x1,
+    FlashEraseRegion = 0x2,
     ReadMemory = 0x3,
     WriteMemory = 0x4,
     GetProperty = 0x7,
@@ -575,6 +576,24 @@ pub fn do_isp_flash_erase_all(port: &mut dyn serialport::SerialPort) -> Result<(
     ];
 
     send_command(port, CommandTag::FlashEraseAll, args)?;
+
+    read_response(port, ResponseCode::Generic)?;
+
+    Ok(())
+}
+
+pub fn do_isp_flash_erase_region(
+    port: &mut dyn serialport::SerialPort,
+    start_address: u32,
+    byte_count: u32,
+) -> Result<()> {
+    let args = vec![
+        start_address,
+        byte_count,
+        0_u32, // internal flash memory identifier
+    ];
+
+    send_command(port, CommandTag::FlashEraseRegion, args)?;
 
     read_response(port, ResponseCode::Generic)?;
 

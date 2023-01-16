@@ -38,6 +38,13 @@ enum ISPCommand {
     /// Erases all non-secure flash. This MUST be done before writing!
     #[clap(name = "flash-erase-all")]
     FlashEraseAll,
+    /// Erases a portion of non-secure flash. This MUST be done before writing!
+    FlashEraseRegion {
+        #[clap(parse(try_from_str = parse_int::parse))]
+        start_address: u32,
+        #[clap(parse(try_from_str = parse_int::parse))]
+        byte_count: u32,
+    },
     /// Write a file to the CMPA region
     #[clap(name = "write-cmpa")]
     WriteCMPA {
@@ -280,6 +287,16 @@ fn main() -> Result<()> {
             do_isp_flash_erase_all(&mut *port)?;
 
             println!("Flash erased!");
+        }
+        ISPCommand::FlashEraseRegion {
+            start_address,
+            byte_count,
+        } => {
+            do_ping(&mut *port)?;
+
+            do_isp_flash_erase_region(&mut *port, start_address, byte_count)?;
+
+            println!("Flash region erased!");
         }
         // Yes this is just another write-memory call but remembering addresses
         // is hard.
