@@ -17,6 +17,8 @@ enum ImageType {
         src_bin: PathBuf,
         #[clap(parse(from_os_str))]
         dest_bin: PathBuf,
+        #[clap(long, parse(try_from_str = parse_int::parse), default_value = "0")]
+        address: u32,
     },
     ChainedImage {
         #[clap(long)]
@@ -35,6 +37,8 @@ enum ImageType {
         dest_bin: PathBuf,
         #[clap(parse(from_os_str))]
         dest_cmpa: PathBuf,
+        #[clap(long, parse(try_from_str = parse_int::parse), default_value = "0")]
+        address: u32,
     },
     /// Generate a secure saigned image and corresponding CMPA region
     #[clap(name = "signed-image")]
@@ -57,6 +61,8 @@ enum ImageType {
         dest_bin: PathBuf,
         #[clap(parse(from_os_str))]
         dest_cmpa: PathBuf,
+        #[clap(long, parse(try_from_str = parse_int::parse), default_value = "0")]
+        address: u32,
     },
     #[clap(name = "ecc-image")]
     EccImage {
@@ -66,6 +72,8 @@ enum ImageType {
         priv_key: PathBuf,
         #[clap(parse(from_os_str))]
         dest_bin: PathBuf,
+        #[clap(long, parse(try_from_str = parse_int::parse), default_value = "0")]
+        address: u32,
     },
 }
 
@@ -80,8 +88,12 @@ fn main() -> Result<()> {
     let cmd = Images::parse();
 
     match cmd.cmd {
-        ImageType::Crc { src_bin, dest_bin } => {
-            crc_image::update_crc(&src_bin, &dest_bin)?;
+        ImageType::Crc {
+            src_bin,
+            dest_bin,
+            address,
+        } => {
+            crc_image::update_crc(&src_bin, &dest_bin, address)?;
             println!("Done! CRC image written to {:?}", &dest_bin);
         }
         ImageType::ChainedImage {
@@ -93,11 +105,12 @@ fn main() -> Result<()> {
             cfg,
             dest_bin,
             dest_cmpa,
+            address,
         } => {
             let cfg_contents = std::fs::read(&cfg)?;
             let toml: CfgFile = toml::from_slice(&cfg_contents)?;
 
-            let rkth = signed_image::sign_chain(&src_bin, None, &toml.certs, &dest_bin)?;
+            let rkth = signed_image::sign_chain(&src_bin, None, &toml.certs, &dest_bin, address)?;
             signed_image::create_cmpa(
                 with_dice,
                 with_dice_inc_nxp_cfg,
@@ -122,8 +135,10 @@ fn main() -> Result<()> {
             root_cert0,
             dest_bin,
             dest_cmpa,
+            address,
         } => {
-            let rkth = signed_image::sign_image(&src_bin, &priv_key, &root_cert0, &dest_bin)?;
+            let rkth =
+                signed_image::sign_image(&src_bin, &priv_key, &root_cert0, &dest_bin, address)?;
             signed_image::create_cmpa(
                 with_dice,
                 with_dice_inc_nxp_cfg,
@@ -141,8 +156,9 @@ fn main() -> Result<()> {
             src_bin,
             priv_key,
             dest_bin,
+            address,
         } => {
-            sign_ecc::ecc_sign_image(&src_bin, &priv_key, &dest_bin)?;
+            sign_ecc::ecc_sign_image(&src_bin, &priv_key, &dest_bin, address)?;
             println!("Done! ECC image written to {:?}", &dest_bin);
         }
     }

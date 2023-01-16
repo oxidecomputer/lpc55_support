@@ -36,7 +36,12 @@ fn get_pad(val: usize) -> usize {
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Path) -> Result<()> {
+fn do_ecc_sign_image(
+    binary_path: &Path,
+    priv_key_path: &Path,
+    outfile_path: &Path,
+    address: u32,
+) -> Result<()> {
     let mut bytes = std::fs::read(binary_path)?;
     let image_pad = get_pad(bytes.len());
 
@@ -92,8 +97,8 @@ fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Pa
     let boot_field = BootField::new(BootImageType::SignedImage);
 
     bytes[0x24..0x28].clone_from_slice(&boot_field.pack()?);
-    // Our execution address is always 0
-    byteorder::LittleEndian::write_u32(&mut bytes[0x34..0x38], 0x0);
+    // Our execution address is next
+    byteorder::LittleEndian::write_u32(&mut bytes[0x34..0x38], address);
     // where to find the block. For now just stick it right after the image
     byteorder::LittleEndian::write_u32(&mut bytes[0x28..0x2c], (image_len + image_pad) as u32);
 
@@ -141,6 +146,11 @@ fn do_ecc_sign_image(binary_path: &Path, priv_key_path: &Path, outfile_path: &Pa
     Ok(())
 }
 
-pub fn ecc_sign_image(src_bin: &Path, priv_key: &Path, dest_bin: &Path) -> Result<()> {
-    do_ecc_sign_image(src_bin, priv_key, dest_bin)
+pub fn ecc_sign_image(
+    src_bin: &Path,
+    priv_key: &Path,
+    dest_bin: &Path,
+    address: u32,
+) -> Result<()> {
+    do_ecc_sign_image(src_bin, priv_key, dest_bin, address)
 }

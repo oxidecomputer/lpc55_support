@@ -9,7 +9,7 @@ use lpc55_areas::{BootField, BootImageType};
 use packed_struct::prelude::*;
 use std::path::Path;
 
-pub fn update_crc(src: &Path, dest: &Path) -> Result<()> {
+pub fn update_crc(src: &Path, dest: &Path, address: u32) -> Result<()> {
     let mut bytes = std::fs::read(src)?;
 
     // We need to update 3 fields before calculating the CRC:
@@ -30,8 +30,7 @@ pub fn update_crc(src: &Path, dest: &Path) -> Result<()> {
     let boot_field = BootField::new(BootImageType::CRCImage);
     bytes[0x24..0x28].clone_from_slice(&boot_field.pack()?);
 
-    // Our execution address is always 0
-    byteorder::LittleEndian::write_u32(&mut bytes[0x34..0x38], 0x0);
+    byteorder::LittleEndian::write_u32(&mut bytes[0x34..0x38], address);
 
     // The CRC algorithm NXP uses is crc32 / MPEG-2
     // poly: 0x04c11db7
