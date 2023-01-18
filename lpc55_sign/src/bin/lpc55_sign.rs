@@ -4,6 +4,7 @@
 
 use anyhow::Result;
 use clap::Parser;
+use lpc55_areas::{CFPAPage, DebugSettings, RKTHRevoke, ROTKeyStatus};
 use lpc55_sign::signed_image::CfgFile;
 use lpc55_sign::{crc_image, sign_ecc, signed_image};
 use std::path::PathBuf;
@@ -63,6 +64,8 @@ enum ImageType {
         dest_cmpa: PathBuf,
         #[clap(long, parse(try_from_str = parse_int::parse), default_value = "0")]
         address: u32,
+        #[clap(long)]
+        cfpa: Option<PathBuf>,
     },
     #[clap(name = "ecc-image")]
     EccImage {
@@ -136,6 +139,7 @@ fn main() -> Result<()> {
             dest_bin,
             dest_cmpa,
             address,
+            cfpa,
         } => {
             let rkth =
                 signed_image::sign_image(&src_bin, &priv_key, &root_cert0, &dest_bin, address)?;
@@ -151,6 +155,23 @@ fn main() -> Result<()> {
                 "Done! Signed image written to {:?}, CMPA to {:?}",
                 &dest_bin, &dest_cmpa
             );
+            if let Some(cfpa_path) = cfpa {
+                let mut cfpa = CFPAPage::default();
+                cfpa.update_version();
+
+                let mut rkth = RKTHRevoke::new();
+                rkth.rotk0 = ROTKeyStatus::enabled().into();
+                rkth.rotk1 = ROTKeyStatus::invalid().into();
+                rkth.rotk2 = ROTKeyStatus::invalid().into();
+                rkth.rotk3 = ROTKeyStatus::invalid().into();
+
+                cfpa.update_rkth_revoke(rkth)?;
+                let cfpa_settings = DebugSettings::new();
+                cfpa.set_debug_fields(cfpa_settings)?;
+
+                std::fs::write(&cfpa_path, &cfpa.to_vec()?)?;
+                println!("CFPA written to {}", cfpa_path.display());
+            }
         }
         ImageType::EccImage {
             src_bin,
