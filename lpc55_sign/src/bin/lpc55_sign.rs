@@ -4,13 +4,15 @@
 
 use anyhow::Result;
 use clap::Parser;
-use lpc55_areas::{CFPAPage, DebugSettings, RKTHRevoke, ROTKeyStatus};
+use lpc55_areas::{CFPAPage, CMPAPage, DebugSettings, RKTHRevoke, ROTKeyStatus, SecureBootCfg};
 use lpc55_sign::signed_image::CfgFile;
 use lpc55_sign::{crc_image, sign_ecc, signed_image};
+use packed_struct::PackedStruct;
+use std::io::Read;
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
-enum ImageType {
+enum Command {
     /// Generate a non-secure CRC image
     #[clap(name = "crc")]
     Crc {
@@ -78,20 +80,29 @@ enum ImageType {
         #[clap(long, parse(try_from_str = parse_int::parse), default_value = "0")]
         address: u32,
     },
+    VerifySignedImage {
+        #[clap(parse(from_os_str))]
+        src_cmpa: PathBuf,
+
+        #[clap(parse(from_os_str))]
+        src_cfpa: PathBuf,
+
+        #[clap(parse(from_os_str))]
+        src_img: PathBuf,
+    },
 }
 
 #[derive(Debug, Parser)]
-#[clap(name = "images")]
-struct Images {
+struct Opts {
     #[clap(subcommand)]
-    cmd: ImageType,
+    cmd: Command,
 }
 
 fn main() -> Result<()> {
-    let cmd = Images::parse();
+    let cmd = Opts::parse();
 
     match cmd.cmd {
-        ImageType::Crc {
+        Command::Crc {
             src_bin,
             dest_bin,
             address,
@@ -99,7 +110,7 @@ fn main() -> Result<()> {
             crc_image::update_crc(&src_bin, &dest_bin, address)?;
             println!("Done! CRC image written to {:?}", &dest_bin);
         }
-        ImageType::ChainedImage {
+        Command::ChainedImage {
             with_dice,
             with_dice_inc_nxp_cfg,
             with_dice_cust_cfg,
@@ -128,7 +139,7 @@ fn main() -> Result<()> {
                 &dest_bin, &dest_cmpa
             );
         }
-        ImageType::SignedImage {
+        Command::SignedImage {
             with_dice,
             with_dice_inc_nxp_cfg,
             with_dice_cust_cfg,
@@ -173,7 +184,7 @@ fn main() -> Result<()> {
                 println!("CFPA written to {}", cfpa_path.display());
             }
         }
-        ImageType::EccImage {
+        Command::EccImage {
             src_bin,
             priv_key,
             dest_bin,
@@ -181,6 +192,54 @@ fn main() -> Result<()> {
         } => {
             sign_ecc::ecc_sign_image(&src_bin, &priv_key, &dest_bin, address)?;
             println!("Done! ECC image written to {:?}", &dest_bin);
+        }
+        Command::VerifySignedImage {
+            src_cmpa,
+            src_cfpa,
+            src_img,
+        } => {
+            println!("=== CMPA ====");
+
+            let cmpa = {
+                let mut cmpa_bytes = [0u8; 512];
+                let mut cmpa_file = std::fs::File::open(src_cmpa)?;
+                cmpa_file.read_exact(&mut cmpa_bytes)?;
+                CMPAPage::from_bytes(&cmpa_bytes)?
+            };
+
+            let boot_cfg = cmpa.get_boot_cfg()?;
+            println!("{:#?}", boot_cfg);
+
+            let secure_boot_cfg = cmpa.get_secure_boot_cfg()?;
+            println!("{:#?}", secure_boot_cfg);
+
+            let cc_socu_pin = cmpa.get_cc_socu_pin()?;
+            println!("{:#?}", cc_socu_pin);
+
+            let cc_socu_dflt = cmpa.get_cc_socu_dflt()?;
+            println!("{:#?}", cc_socu_dflt);
+
+            println!("ROTKH: {:}", hex::encode(cmpa.rotkh));
+
+            let cfpa = {
+                let mut cfpa_bytes = [0u8; 512];
+                let mut cfpa_file = std::fs::File::open(src_cfpa)?;
+                cfpa_file.read_exact(&mut cfpa_bytes)?;
+                CFPAPage::from_bytes(&cfpa_bytes)?
+            };
+
+            println!("");
+            println!("=== CFPA ====");
+
+            println!("Version: {:x}", cfpa.version);
+            println!("Secure FW Version: {:x}", cfpa.secure_firmware_version);
+            println!("Non-secure FW Version: {:x}", cfpa.ns_fw_version);
+            println!("Image key revoke: {:x}", cfpa.image_key_revoke);
+
+            let rkth_revoke = cfpa.get_rkth_revoke()?;
+            println!("{:#?}", rkth_revoke);
+
+            let image = std::fs::read(src_img)?;
         }
     }
 

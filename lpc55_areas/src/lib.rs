@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use std::fmt::Debug;
+
 use anyhow::Result;
 use packed_struct::prelude::*;
 use serde::Deserialize;
@@ -152,7 +154,8 @@ impl Default for DebugSettings {
 }
 
 bitfield::bitfield! {
-    struct CCSOCUPin(u32);
+    pub struct CCSOCUPin(u32);
+    impl Debug;
     pub non_invasive_debug, set_non_invasive_debug: 0;
     pub invasive_debug, set_invasive_debug: 1;
     pub secure_non_invasive_debug, set_secure_non_invasive_debug: 2;
@@ -173,7 +176,8 @@ impl CCSOCUPin {
 }
 
 bitfield::bitfield! {
-    struct CCSOCUDflt(u32);
+    pub struct CCSOCUDflt(u32);
+    impl Debug;
     pub non_invasive_debug, set_non_invasive_debug: 0;
     pub invasive_debug, set_invasive_debug: 1;
     pub secure_non_invasive_debug, set_secure_non_invasive_debug: 2;
@@ -498,6 +502,14 @@ impl CMPAPage {
         Ok(())
     }
 
+    pub fn get_cc_socu_pin(&self) -> Result<CCSOCUPin> {
+        Ok(CCSOCUPin(self.cc_socu_pin))
+    }
+
+    pub fn get_cc_socu_dflt(&self) -> Result<CCSOCUDflt> {
+        Ok(CCSOCUDflt(self.cc_socu_dflt))
+    }
+
     // We're very deliberate about using from_be_bytes here despite
     // the fact that this is technically going to be an le integer.
     // packed_struct does not handle endian byte swapping for structres
@@ -512,10 +524,18 @@ impl CMPAPage {
         Ok(())
     }
 
+    pub fn get_secure_boot_cfg(&self) -> Result<SecureBootCfg> {
+        Ok(SecureBootCfg::unpack(&self.secure_boot_cfg.to_be_bytes())?)
+    }
+
     pub fn set_boot_cfg(&mut self, default_isp: DefaultIsp, boot_speed: BootSpeed) -> Result<()> {
         let cfg = BootCfg::new(default_isp, boot_speed);
         self.boot_cfg = u32::from_be_bytes(cfg.pack()?);
         Ok(())
+    }
+
+    pub fn get_boot_cfg(&self) -> Result<BootCfg> {
+        Ok(BootCfg::unpack(&self.boot_cfg.to_be_bytes())?)
     }
 
     pub fn set_rotkh(&mut self, rotkh: &[u8; 32]) {
@@ -767,6 +787,10 @@ impl CFPAPage {
         self.rkth_revoke = u32::from_be_bytes(rkth.pack()?);
 
         Ok(())
+    }
+
+    pub fn get_rkth_revoke(&self) -> Result<RKTHRevoke> {
+        Ok(RKTHRevoke::unpack(&self.rkth_revoke.to_be_bytes())?)
     }
 
     pub fn to_vec(&mut self) -> Result<Vec<u8>> {
