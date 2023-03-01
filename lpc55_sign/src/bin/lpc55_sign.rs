@@ -4,10 +4,13 @@
 
 use anyhow::Result;
 use clap::Parser;
-use lpc55_areas::{CFPAPage, CMPAPage, DebugSettings, RKTHRevoke, ROTKeyStatus, SecureBootCfg};
+use lpc55_areas::{
+    BootField, BootImageType, CFPAPage, CMPAPage, CertHeader, DebugSettings, RKTHRevoke,
+    ROTKeyStatus, SecBootStatus, TZMImageStatus, TzmImageType, TzmPreset,
+};
 use lpc55_sign::signed_image::CfgFile;
 use lpc55_sign::{crc_image, sign_ecc, signed_image};
-use packed_struct::PackedStruct;
+use packed_struct::{EnumCatchAll, PackedStruct};
 use std::io::Read;
 use std::path::PathBuf;
 
@@ -228,7 +231,7 @@ fn main() -> Result<()> {
                 CFPAPage::from_bytes(&cfpa_bytes)?
             };
 
-            println!("");
+            println!();
             println!("=== CFPA ====");
 
             println!("Version: {:x}", cfpa.version);
@@ -239,7 +242,133 @@ fn main() -> Result<()> {
             let rkth_revoke = cfpa.get_rkth_revoke()?;
             println!("{:#?}", rkth_revoke);
 
+            println!("=== Image ====");
             let image = std::fs::read(src_img)?;
+            let image_len = u32::from_le_bytes(image[0x20..0x24].try_into().unwrap());
+            println!("image length: {image_len:#x} ({image_len})");
+            let image_type = BootField::unpack(image[0x24..0x28].try_into().unwrap())?;
+            println!("image type: {image_type:#?}");
+
+            let header_offset = u32::from_le_bytes(image[0x28..0x2c].try_into().unwrap());
+            println!("header offset: {header_offset:#x} ({header_offset})");
+
+            let load_addr = u32::from_le_bytes(image[0x34..0x38].try_into().unwrap());
+            println!("load address: {load_addr:#x}");
+            let is_plain = image_type.img_type == EnumCatchAll::Enum(BootImageType::PlainImage);
+            if is_plain && load_addr != 0 {
+                println!("⚠️  load address is non-0 in a non-plain image");
+            } else if !is_plain && load_addr == 0 {
+                println!("⚠️  load address is 0 in a non-plain image");
+            }
+
+            let secure_boot_enabled = matches!(
+                secure_boot_cfg.sec_boot_en,
+                SecBootStatus::SignedImage1
+                    | SecBootStatus::SignedImage2
+                    | SecBootStatus::SignedImage3
+            );
+            println!("secure boot enabled: {secure_boot_enabled}");
+
+            let cert_header_size = std::mem::size_of::<CertHeader>();
+            let cert_header = CertHeader::unpack(
+                image[header_offset as usize..][..cert_header_size]
+                    .try_into()
+                    .unwrap(),
+            )?;
+            println!("cert header: {cert_header:#x?}");
+            println!("data.len(): {:#x}", image.len());
+
+            if cert_header.signature != *b"cert" {
+                println!("⚠️  cert header does not begin with 'cert'");
+            }
+
+            if cert_header.total_image_len != header_offset + cert_header.header_length {
+                println!(
+                    "⚠️  mismatched lengths (?) ({} != {})",
+                    cert_header.total_image_len,
+                    header_offset + cert_header.header_length
+                );
+            }
+
+            let mut start = (header_offset + cert_header.header_length) as usize;
+            for i in 0..cert_header.certificate_count {
+                let x509_length = u32::from_le_bytes(image[start..start + 4].try_into().unwrap());
+                println!(
+                    "checking certificate [{}/{}]",
+                    i + 1,
+                    cert_header.certificate_count
+                );
+                println!("    certificate length: {x509_length}");
+                start += 4;
+                let cert = &image[start..start + x509_length as usize];
+
+                let _ = x509_parser::parse_x509_certificate(cert)?;
+                println!("    successfully parsed certificate");
+                start += x509_length as usize;
+            }
+
+            for i in 0..4 {
+                let rot_hash = &image[start..start + 32];
+                print!("Root key hash {i}: ");
+                for r in rot_hash {
+                    print!("{r:02x}");
+                }
+                println!();
+                start += 32;
+            }
+
+            println!("Checking TZM configuration");
+            match secure_boot_cfg.tzm_image_type {
+                TZMImageStatus::PresetTZM => {
+                    if matches!(image_type.tzm_preset, TzmPreset::NotPresent) {
+                        println!(
+                            "    ⚠️  CFPA requires TZ preset, but image header says it is not present"
+                        );
+                    } else {
+                        todo!("don't yet know how to decode TZ preset");
+                    }
+                }
+                TZMImageStatus::InImageHeader => {
+                    if matches!(image_type.tzm_image_type, TzmImageType::Enabled) {
+                        if matches!(image_type.tzm_preset, TzmPreset::Present) {
+                            todo!("don't yet know how to decode TZ preset");
+                        } else {
+                            println!("    TZM enabled in image header, without preset data");
+                        }
+                    } else {
+                        println!("    TZM disabled in image header");
+                    }
+                }
+                TZMImageStatus::DisableTZM => {
+                    if matches!(image_type.tzm_image_type, TzmImageType::Enabled) {
+                        println!(
+                            "    ⚠️  CFPA requires TZ disabled, but image header says it is enabled"
+                        );
+                    } else if matches!(image_type.tzm_preset, TzmPreset::Present) {
+                        println!(
+                            "    ⚠️  CFPA requires TZ disabled, but image header has tzm_preset"
+                        );
+                    } else {
+                        println!("    TZM disabled in CMPA and in image header");
+                    }
+                }
+                TZMImageStatus::EnableTZM => {
+                    if matches!(image_type.tzm_image_type, TzmImageType::Disabled) {
+                        println!(
+                            "    ⚠️  CFPA requires TZ enabled, but image header says it is disabled"
+                        );
+                    } else if matches!(image_type.tzm_preset, TzmPreset::Present) {
+                        todo!("don't yet know how to decode TZ preset");
+                    } else {
+                        println!(
+                            "    TZM enabled in CMPA and in image header, without preset data"
+                        );
+                    }
+                }
+            }
+
+            // TODO: check signature
+            println!("{:?}", &image[start..]);
         }
     }
 
