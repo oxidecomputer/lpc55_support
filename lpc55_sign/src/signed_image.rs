@@ -6,7 +6,11 @@ use anyhow::{anyhow, Result};
 use byteorder::{ByteOrder, WriteBytesExt};
 use lpc55_areas::*;
 use rsa::{
-    pkcs1::DecodeRsaPrivateKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePrivateKey, PublicKeyParts,
+    pkcs1::DecodeRsaPrivateKey,
+    pkcs1::DecodeRsaPublicKey,
+    pkcs8::DecodePrivateKey,
+    signature::{SignatureEncoding, Signer},
+    PublicKeyParts,
 };
 use sha2::Digest;
 
@@ -79,7 +83,7 @@ pub fn sign_chain(
         .cert_paths
         .iter()
         .flat_map(|path| {
-            let cert_bytes = std::fs::read(prefix.join(&path)).unwrap();
+            let cert_bytes = std::fs::read(prefix.join(path)).unwrap();
             let cert_pad = get_pad(cert_bytes.len());
             let padded_len = cert_bytes.len() + cert_pad;
             let mut v = Vec::new();
@@ -180,7 +184,7 @@ pub fn sign_chain(
     for _ in 0..(4 - root_cnt) {
         let empty_hash: [u8; 32] = [0; 32];
         out.write_all(&empty_hash)?;
-        rkth_sha.update(&empty_hash);
+        rkth_sha.update(empty_hash);
     }
 
     drop(out);
@@ -196,12 +200,8 @@ pub fn sign_chain(
     let priv_key = rsa::RsaPrivateKey::read_pkcs1_pem_file(prefix.join(priv_key_path))
         .or_else(|_| rsa::RsaPrivateKey::read_pkcs8_pem_file(prefix.join(priv_key_path)))?;
 
-    let sig = priv_key.sign(
-        rsa::padding::PaddingScheme::PKCS1v15Sign {
-            hash: Some(rsa::hash::Hash::SHA2_256),
-        },
-        img_hash.finalize().as_slice(),
-    )?;
+    let signing_key = rsa::pkcs1v15::SigningKey::<rsa::sha2::Sha256>::new_with_prefix(priv_key);
+    let sig = signing_key.sign(img_hash.finalize().as_slice());
 
     println!("Image signature {:x?}", sig);
 
@@ -210,7 +210,7 @@ pub fn sign_chain(
         .append(true)
         .open(outfile_path)?;
 
-    out.write_all(&sig)?;
+    out.write_all(sig.to_bytes().as_ref())?;
     drop(out);
 
     // TODO check the signature with the public key
@@ -318,10 +318,10 @@ pub fn sign_image(
 
     // The sha256 of all the root keys gets put in in the CMPA area
     let mut rkth_sha = sha2::Sha256::new();
-    rkth_sha.update(&root0_sha);
-    rkth_sha.update(&empty_hash);
-    rkth_sha.update(&empty_hash);
-    rkth_sha.update(&empty_hash);
+    rkth_sha.update(root0_sha);
+    rkth_sha.update(empty_hash);
+    rkth_sha.update(empty_hash);
+    rkth_sha.update(empty_hash);
 
     let rkth = rkth_sha.finalize();
 
@@ -334,12 +334,8 @@ pub fn sign_image(
     let mut img_hash = sha2::Sha256::new();
     img_hash.update(&sign_bytes);
 
-    let sig = priv_key.sign(
-        rsa::padding::PaddingScheme::PKCS1v15Sign {
-            hash: Some(rsa::hash::Hash::SHA2_256),
-        },
-        img_hash.finalize().as_slice(),
-    )?;
+    let signing_key = rsa::pkcs1v15::SigningKey::<rsa::sha2::Sha256>::new_with_prefix(priv_key);
+    let sig = signing_key.sign(img_hash.finalize().as_slice());
 
     println!("Image signature {:x?}", sig);
 
@@ -348,7 +344,7 @@ pub fn sign_image(
         .append(true)
         .open(outfile_path)?;
 
-    out.write_all(&sig)?;
+    out.write_all(sig.to_bytes().as_ref())?;
     drop(out);
 
     Ok(rkth.as_slice().try_into().expect("something went wrong?"))

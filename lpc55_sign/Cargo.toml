@@ -18,7 +18,7 @@ hex = "0.4.3"
 crc-any = "2.3.5"
 x509-parser = "0.12.0"
 sha2 = "0.9.8"
-rsa = "0.6.1"
+rsa = { version = "0.8.1", features = ["sha2"] }
 lpc55_areas = { path = "../lpc55_areas", features = [] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.5.6"

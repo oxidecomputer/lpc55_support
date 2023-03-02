@@ -11,7 +11,7 @@ use lpc55_areas::{
 use lpc55_sign::signed_image::CfgFile;
 use lpc55_sign::{crc_image, sign_ecc, signed_image};
 use packed_struct::{EnumCatchAll, PackedStruct};
-use rsa::{pkcs1::DecodeRsaPublicKey, PublicKeyParts};
+use rsa::{pkcs1::DecodeRsaPublicKey, signature::Verifier, PublicKeyParts};
 use sha2::Digest;
 use std::io::Read;
 use std::path::PathBuf;
@@ -393,8 +393,20 @@ fn main() -> Result<()> {
                 }
             }
 
-            // TODO: check signature
-            println!("{:?}", &image[start..]);
+            let public_key = &certs
+                .last()
+                .unwrap()
+                .tbs_certificate
+                .subject_pki
+                .subject_public_key;
+            let public_key_rsa = rsa::RsaPublicKey::from_pkcs1_der(public_key.as_ref()).unwrap();
+            let signature = rsa::pkcs1v15::Signature::try_from(&image[start..]).unwrap();
+            let verifying_key =
+                rsa::pkcs1v15::VerifyingKey::<rsa::sha2::Sha256>::new_with_prefix(public_key_rsa);
+            match verifying_key.verify(&image[..start], &signature) {
+                Ok(()) => println!("✅ Verified signature against last certificate"),
+                Err(e) => println!("⚠️  Failed to verify signature: {e:?}"),
+            }
         }
     }
 
