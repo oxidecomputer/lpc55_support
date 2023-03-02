@@ -251,9 +251,6 @@ fn main() -> Result<()> {
             let image_type = BootField::unpack(image[0x24..0x28].try_into().unwrap())?;
             println!("image type: {image_type:#?}");
 
-            let header_offset = u32::from_le_bytes(image[0x28..0x2c].try_into().unwrap());
-            println!("header offset: {header_offset:#x} ({header_offset})");
-
             let load_addr = u32::from_le_bytes(image[0x34..0x38].try_into().unwrap());
             println!("load address: {load_addr:#x}");
             let is_plain = image_type.img_type == EnumCatchAll::Enum(BootImageType::PlainImage);
@@ -269,87 +266,13 @@ fn main() -> Result<()> {
                     | SecBootStatus::SignedImage2
                     | SecBootStatus::SignedImage3
             );
-            println!("secure boot enabled: {secure_boot_enabled}");
-
-            let cert_header_size = std::mem::size_of::<CertHeader>();
-            let cert_header = CertHeader::unpack(
-                image[header_offset as usize..][..cert_header_size]
-                    .try_into()
-                    .unwrap(),
-            )?;
-            println!("cert header: {cert_header:#x?}");
-            println!("data.len(): {:#x}", image.len());
-
-            if cert_header.signature != *b"cert" {
-                println!("⚠️  cert header does not begin with 'cert'");
-            }
-
-            if cert_header.total_image_len != header_offset + cert_header.header_length {
-                println!(
-                    "⚠️  mismatched lengths (?) ({} != {})",
-                    cert_header.total_image_len,
-                    header_offset + cert_header.header_length
-                );
-            }
-
-            let mut start = (header_offset + cert_header.header_length) as usize;
-            let mut certs = vec![];
-            for i in 0..cert_header.certificate_count {
-                let x509_length = u32::from_le_bytes(image[start..start + 4].try_into().unwrap());
-                println!(
-                    "checking certificate [{}/{}]",
-                    i + 1,
-                    cert_header.certificate_count
-                );
-                println!("    certificate length: {x509_length}");
-                start += 4;
-                let cert = &image[start..start + x509_length as usize];
-
-                let cert = x509_parser::parse_x509_certificate(cert)?;
-                println!("    ✅ successfully parsed certificate");
-                certs.push(cert.1);
-                start += x509_length as usize;
-            }
-
-            let mut rkh_table = vec![];
-            let mut rkh_sha = sha2::Sha256::new();
-            for i in 0..4 {
-                let rot_hash = &image[start..start + 32];
-                print!("Root key hash {i}: ");
-                for r in rot_hash {
-                    print!("{r:02x}");
-                }
-                println!();
-                rkh_sha.update(rot_hash);
-                rkh_table.push(rot_hash.to_owned());
-                start += 32;
-            }
-
-            if rkh_sha.finalize().as_slice() != cmpa.rotkh {
-                println!("⚠️  RKH in CMPA does not match Root Key hashes in image");
-            } else {
-                println!("✅ RKH in CMPA matches Root Key hashes in image");
-            }
-
-            let mut sha = sha2::Sha256::new();
-            let public_key = &certs[0].tbs_certificate.subject_pki.subject_public_key;
-            let public_key_rsa = rsa::RsaPublicKey::from_pkcs1_der(public_key.as_ref()).unwrap();
-            sha.update(public_key_rsa.n().to_bytes_be());
-            sha.update(public_key_rsa.e().to_bytes_be());
-            let out = sha.finalize().to_vec();
-            if !rkh_table.contains(&out) {
-                println!("⚠️  Certificate 0's public key is not in RKH table");
-            } else {
-                println!("✅ Certificate 0's public key is in RKH table");
-            }
+            println!("secure boot enabled in CMPA: {secure_boot_enabled}");
 
             println!("Checking TZM configuration");
             match secure_boot_cfg.tzm_image_type {
                 TZMImageStatus::PresetTZM => {
                     if matches!(image_type.tzm_preset, TzmPreset::NotPresent) {
-                        println!(
-                            "    ⚠️  CFPA requires TZ preset, but image header says it is not present"
-                        );
+                        println!("    ⚠️  CFPA requires TZ preset, but image header says it is not present");
                     } else {
                         todo!("don't yet know how to decode TZ preset");
                     }
@@ -393,22 +316,126 @@ fn main() -> Result<()> {
                 }
             }
 
-            let public_key = &certs
-                .last()
-                .unwrap()
-                .tbs_certificate
-                .subject_pki
-                .subject_public_key;
-            let public_key_rsa = rsa::RsaPublicKey::from_pkcs1_der(public_key.as_ref()).unwrap();
-            let signature = rsa::pkcs1v15::Signature::try_from(&image[start..]).unwrap();
-            let verifying_key =
-                rsa::pkcs1v15::VerifyingKey::<rsa::sha2::Sha256>::new_with_prefix(public_key_rsa);
-            match verifying_key.verify(&image[..start], &signature) {
-                Ok(()) => println!("✅ Verified signature against last certificate"),
-                Err(e) => println!("⚠️  Failed to verify signature: {e:?}"),
+            match image_type.img_type {
+                EnumCatchAll::Enum(BootImageType::SignedImage) => check_signed_image(&image, cmpa)?,
+                EnumCatchAll::Enum(BootImageType::CRCImage) => check_crc_image(&image)?,
+                EnumCatchAll::Enum(BootImageType::PlainImage) => check_plain_image(&image)?,
+                e => panic!("do not know how to check {e:?}"),
             }
         }
     }
 
+    Ok(())
+}
+
+fn check_signed_image(image: &[u8], cmpa: CMPAPage) -> Result<()> {
+    let header_offset = u32::from_le_bytes(image[0x28..0x2c].try_into().unwrap());
+    println!("header offset: {header_offset:#x} ({header_offset})");
+
+    let cert_header_size = std::mem::size_of::<CertHeader>();
+    let cert_header = CertHeader::unpack(
+        image[header_offset as usize..][..cert_header_size]
+            .try_into()
+            .unwrap(),
+    )?;
+    println!("cert header: {cert_header:#x?}");
+    println!("data.len(): {:#x}", image.len());
+
+    if cert_header.signature != *b"cert" {
+        println!("⚠️  cert header does not begin with 'cert'");
+    }
+
+    if cert_header.total_image_len != header_offset + cert_header.header_length {
+        println!(
+            "⚠️  mismatched lengths (?) ({} != {})",
+            cert_header.total_image_len,
+            header_offset + cert_header.header_length
+        );
+    }
+
+    let mut start = (header_offset + cert_header.header_length) as usize;
+    let mut certs = vec![];
+    for i in 0..cert_header.certificate_count {
+        let x509_length = u32::from_le_bytes(image[start..start + 4].try_into().unwrap());
+        println!(
+            "checking certificate [{}/{}]",
+            i + 1,
+            cert_header.certificate_count
+        );
+        println!("    certificate length: {x509_length}");
+        start += 4;
+        let cert = &image[start..start + x509_length as usize];
+
+        let cert = x509_parser::parse_x509_certificate(cert)?;
+        println!("    ✅ successfully parsed certificate");
+        certs.push(cert.1);
+        start += x509_length as usize;
+    }
+
+    let mut rkh_table = vec![];
+    let mut rkh_sha = sha2::Sha256::new();
+    for i in 0..4 {
+        let rot_hash = &image[start..start + 32];
+        print!("Root key hash {i}: ");
+        for r in rot_hash {
+            print!("{r:02x}");
+        }
+        println!();
+        rkh_sha.update(rot_hash);
+        rkh_table.push(rot_hash.to_owned());
+        start += 32;
+    }
+
+    if rkh_sha.finalize().as_slice() != cmpa.rotkh {
+        println!("⚠️  RKH in CMPA does not match Root Key hashes in image");
+    } else {
+        println!("✅ RKH in CMPA matches Root Key hashes in image");
+    }
+
+    let mut sha = sha2::Sha256::new();
+    let public_key = &certs[0].tbs_certificate.subject_pki.subject_public_key;
+    let public_key_rsa = rsa::RsaPublicKey::from_pkcs1_der(public_key.as_ref()).unwrap();
+    sha.update(public_key_rsa.n().to_bytes_be());
+    sha.update(public_key_rsa.e().to_bytes_be());
+    let out = sha.finalize().to_vec();
+    if !rkh_table.contains(&out) {
+        println!("⚠️  Certificate 0's public key is not in RKH table");
+    } else {
+        println!("✅ Certificate 0's public key is in RKH table");
+    }
+
+    let public_key = &certs
+        .last()
+        .unwrap()
+        .tbs_certificate
+        .subject_pki
+        .subject_public_key;
+    let public_key_rsa = rsa::RsaPublicKey::from_pkcs1_der(public_key.as_ref()).unwrap();
+    let signature = rsa::pkcs1v15::Signature::try_from(&image[start..]).unwrap();
+    let verifying_key =
+        rsa::pkcs1v15::VerifyingKey::<rsa::sha2::Sha256>::new_with_prefix(public_key_rsa);
+    match verifying_key.verify(&image[..start], &signature) {
+        Ok(()) => println!("✅ Verified signature against last certificate"),
+        Err(e) => println!("⚠️  Failed to verify signature: {e:?}"),
+    }
+    Ok(())
+}
+
+fn check_crc_image(image: &[u8]) -> Result<()> {
+    let mut crc = crc_any::CRCu32::crc32mpeg2();
+    crc.digest(&image[..0x28]);
+    crc.digest(&image[0x2c..]);
+    let expected = crc.get_crc();
+    let actual = u32::from_le_bytes(image[0x28..0x2c].try_into().unwrap());
+    if expected == actual {
+        println!("✅ CRC32 matches");
+    } else {
+        println!("⚠️  CRC32 does not match");
+    }
+    Ok(())
+}
+
+fn check_plain_image(_image: &[u8]) -> Result<()> {
+    println!("✅ Nothing to check for plain image");
     Ok(())
 }
