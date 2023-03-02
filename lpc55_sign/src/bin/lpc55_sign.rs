@@ -48,7 +48,7 @@ enum Command {
         #[clap(long, parse(try_from_str = parse_int::parse), default_value = "0")]
         address: u32,
     },
-    /// Generate a secure saigned image and corresponding CMPA region
+    /// Generate a secure signed image and corresponding CMPA region
     #[clap(name = "signed-image")]
     SignedImage {
         #[clap(long)]
@@ -318,8 +318,18 @@ fn main() -> Result<()> {
 
             match image_type.img_type {
                 EnumCatchAll::Enum(BootImageType::SignedImage) => check_signed_image(&image, cmpa)?,
-                EnumCatchAll::Enum(BootImageType::CRCImage) => check_crc_image(&image)?,
-                EnumCatchAll::Enum(BootImageType::PlainImage) => check_plain_image(&image)?,
+                EnumCatchAll::Enum(BootImageType::CRCImage) => {
+                    if secure_boot_enabled {
+                        println!("⚠️  Secure boot enabled in CPFA, but this is a CRC image");
+                    }
+                    check_crc_image(&image)?
+                }
+                EnumCatchAll::Enum(BootImageType::PlainImage) => {
+                    if secure_boot_enabled {
+                        println!("⚠️  Secure boot enabled in CPFA, but this is a plain image");
+                    }
+                    check_plain_image(&image)?
+                }
                 e => panic!("do not know how to check {e:?}"),
             }
         }
@@ -370,6 +380,8 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage) -> Result<()> {
         println!("    ✅ successfully parsed certificate");
         certs.push(cert.1);
         start += x509_length as usize;
+
+        // TODO: verify that this certificate is signed by the previous one
     }
 
     let mut rkh_table = vec![];
@@ -412,6 +424,8 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage) -> Result<()> {
         .subject_public_key;
     let public_key_rsa = rsa::RsaPublicKey::from_pkcs1_der(public_key.as_ref()).unwrap();
     let signature = rsa::pkcs1v15::Signature::try_from(&image[start..]).unwrap();
+    println!("got signature {signature:x?}");
+    println!("signature length: {}", signature.as_ref().len());
     let verifying_key =
         rsa::pkcs1v15::VerifyingKey::<rsa::sha2::Sha256>::new_with_prefix(public_key_rsa);
     match verifying_key.verify(&image[..start], &signature) {
