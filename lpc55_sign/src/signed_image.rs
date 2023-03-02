@@ -6,11 +6,7 @@ use anyhow::{anyhow, Result};
 use byteorder::{ByteOrder, WriteBytesExt};
 use lpc55_areas::*;
 use rsa::{
-    pkcs1::DecodeRsaPrivateKey,
-    pkcs1::DecodeRsaPublicKey,
-    pkcs8::DecodePrivateKey,
-    signature::{SignatureEncoding, Signer},
-    PublicKeyParts,
+    pkcs1::DecodeRsaPrivateKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePrivateKey, PublicKeyParts,
 };
 use sha2::Digest;
 
@@ -200,8 +196,10 @@ pub fn sign_chain(
     let priv_key = rsa::RsaPrivateKey::read_pkcs1_pem_file(prefix.join(priv_key_path))
         .or_else(|_| rsa::RsaPrivateKey::read_pkcs8_pem_file(prefix.join(priv_key_path)))?;
 
-    let signing_key = rsa::pkcs1v15::SigningKey::<rsa::sha2::Sha256>::new_with_prefix(priv_key);
-    let sig = signing_key.sign(img_hash.finalize().as_slice());
+    let sig = priv_key.sign(
+        rsa::pkcs1v15::Pkcs1v15Sign::new::<rsa::sha2::Sha256>(),
+        img_hash.finalize().as_slice(),
+    )?;
 
     println!("Image signature {:x?}", sig);
 
@@ -210,7 +208,7 @@ pub fn sign_chain(
         .append(true)
         .open(outfile_path)?;
 
-    out.write_all(sig.to_bytes().as_ref())?;
+    out.write_all(sig.as_ref())?;
     drop(out);
 
     // TODO check the signature with the public key
@@ -334,8 +332,10 @@ pub fn sign_image(
     let mut img_hash = sha2::Sha256::new();
     img_hash.update(&sign_bytes);
 
-    let signing_key = rsa::pkcs1v15::SigningKey::<rsa::sha2::Sha256>::new_with_prefix(priv_key);
-    let sig = signing_key.sign(img_hash.finalize().as_slice());
+    let sig = priv_key.sign(
+        rsa::pkcs1v15::Pkcs1v15Sign::new::<rsa::sha2::Sha256>(),
+        img_hash.finalize().as_slice(),
+    )?;
 
     println!("Image signature {:x?}", sig);
 
@@ -344,7 +344,7 @@ pub fn sign_image(
         .append(true)
         .open(outfile_path)?;
 
-    out.write_all(sig.to_bytes().as_ref())?;
+    out.write_all(sig.as_ref())?;
     drop(out);
 
     Ok(rkth.as_slice().try_into().expect("something went wrong?"))
