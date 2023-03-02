@@ -11,6 +11,8 @@ use lpc55_areas::{
 use lpc55_sign::signed_image::CfgFile;
 use lpc55_sign::{crc_image, sign_ecc, signed_image};
 use packed_struct::{EnumCatchAll, PackedStruct};
+use rsa::{pkcs1::DecodeRsaPublicKey, PublicKeyParts};
+use sha2::Digest;
 use std::io::Read;
 use std::path::PathBuf;
 
@@ -291,6 +293,7 @@ fn main() -> Result<()> {
             }
 
             let mut start = (header_offset + cert_header.header_length) as usize;
+            let mut certs = vec![];
             for i in 0..cert_header.certificate_count {
                 let x509_length = u32::from_le_bytes(image[start..start + 4].try_into().unwrap());
                 println!(
@@ -302,11 +305,13 @@ fn main() -> Result<()> {
                 start += 4;
                 let cert = &image[start..start + x509_length as usize];
 
-                let _ = x509_parser::parse_x509_certificate(cert)?;
+                let cert = x509_parser::parse_x509_certificate(cert)?;
                 println!("    successfully parsed certificate");
+                certs.push(cert.1);
                 start += x509_length as usize;
             }
 
+            let mut rkh_table = vec![];
             for i in 0..4 {
                 let rot_hash = &image[start..start + 32];
                 print!("Root key hash {i}: ");
@@ -314,7 +319,20 @@ fn main() -> Result<()> {
                     print!("{r:02x}");
                 }
                 println!();
+                rkh_table.push(rot_hash.to_owned());
                 start += 32;
+            }
+
+            let mut sha = sha2::Sha256::new();
+            let public_key = &certs[0].tbs_certificate.subject_pki.subject_public_key;
+            let public_key_rsa = rsa::RsaPublicKey::from_pkcs1_der(public_key.as_ref()).unwrap();
+            sha.update(public_key_rsa.n().to_bytes_be());
+            sha.update(public_key_rsa.e().to_bytes_be());
+            let out = sha.finalize().to_vec();
+            if !rkh_table.contains(&out) {
+                println!("⚠️  Certificate 0's public key is not in RKH table");
+            } else {
+                println!("Certificate 0's public key is in RKH table");
             }
 
             println!("Checking TZM configuration");
