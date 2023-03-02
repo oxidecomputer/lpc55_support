@@ -326,7 +326,7 @@ fn main() -> Result<()> {
             }
 
             if rkh_sha.finalize().as_slice() != cmpa.rotkh {
-                println!("⚠️  Certificate 0's public key is not in RKH table");
+                println!("⚠️  RKH in CMPA does not match Root Key hashes in image");
             } else {
                 println!("✅ RKH in CMPA matches Root Key hashes in image");
             }
