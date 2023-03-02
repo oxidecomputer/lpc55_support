@@ -306,12 +306,13 @@ fn main() -> Result<()> {
                 let cert = &image[start..start + x509_length as usize];
 
                 let cert = x509_parser::parse_x509_certificate(cert)?;
-                println!("    successfully parsed certificate");
+                println!("    ✅ successfully parsed certificate");
                 certs.push(cert.1);
                 start += x509_length as usize;
             }
 
             let mut rkh_table = vec![];
+            let mut rkh_sha = sha2::Sha256::new();
             for i in 0..4 {
                 let rot_hash = &image[start..start + 32];
                 print!("Root key hash {i}: ");
@@ -319,8 +320,15 @@ fn main() -> Result<()> {
                     print!("{r:02x}");
                 }
                 println!();
+                rkh_sha.update(rot_hash);
                 rkh_table.push(rot_hash.to_owned());
                 start += 32;
+            }
+
+            if rkh_sha.finalize().as_slice() != cmpa.rotkh {
+                println!("⚠️  Certificate 0's public key is not in RKH table");
+            } else {
+                println!("✅ RKH in CMPA matches Root Key hashes in image");
             }
 
             let mut sha = sha2::Sha256::new();
@@ -332,7 +340,7 @@ fn main() -> Result<()> {
             if !rkh_table.contains(&out) {
                 println!("⚠️  Certificate 0's public key is not in RKH table");
             } else {
-                println!("Certificate 0's public key is in RKH table");
+                println!("✅ Certificate 0's public key is in RKH table");
             }
 
             println!("Checking TZM configuration");
