@@ -397,12 +397,17 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
         let cert = &image[start..start + x509_length as usize];
 
         let (_, cert) = x509_parser::parse_x509_certificate(cert)?;
-        println!("    ✅ successfully parsed certificate");
+        println!("    ✅ Successfully parsed certificate");
 
         let prev_public_key = certs.last().map(|prev| prev.public_key());
+        let kind = if prev_public_key.is_some() {
+            "chained"
+        } else {
+            "self-signed"
+        };
         match cert.verify_signature(prev_public_key) {
-            Ok(()) => println!("    ✅ Verified certificate signature"),
-            Err(e) => println!("    ❌ Failed to verify certificate signature: {e:?}"),
+            Ok(()) => println!("    ✅ Verified {kind} certificate signature"),
+            Err(e) => println!("    ❌ Failed to verify {kind} certificate signature: {e:?}"),
         }
 
         certs.push(cert);
