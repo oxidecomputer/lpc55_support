@@ -86,6 +86,9 @@ enum Command {
         address: u32,
     },
     VerifySignedImage {
+        #[clap(short, long)]
+        verbose: bool,
+
         #[clap(parse(from_os_str))]
         src_cmpa: PathBuf,
 
@@ -202,9 +205,9 @@ fn main() -> Result<()> {
             src_cmpa,
             src_cfpa,
             src_img,
+            verbose,
         } => {
             println!("=== CMPA ====");
-
             let cmpa = {
                 let mut cmpa_bytes = [0u8; 512];
                 let mut cmpa_file = std::fs::File::open(src_cmpa)?;
@@ -213,19 +216,20 @@ fn main() -> Result<()> {
             };
 
             let boot_cfg = cmpa.get_boot_cfg()?;
-            println!("{:#?}", boot_cfg);
-
             let secure_boot_cfg = cmpa.get_secure_boot_cfg()?;
-            println!("{:#?}", secure_boot_cfg);
-
             let cc_socu_pin = cmpa.get_cc_socu_pin()?;
-            println!("{:#?}", cc_socu_pin);
-
             let cc_socu_dflt = cmpa.get_cc_socu_dflt()?;
-            println!("{:#?}", cc_socu_dflt);
 
-            println!("ROTKH: {:}", hex::encode(cmpa.rotkh));
+            if verbose {
+                println!("{:#?}", boot_cfg);
+                println!("{:#?}", secure_boot_cfg);
+                println!("{:#?}", cc_socu_pin);
+                println!("{:#?}", cc_socu_dflt);
+                println!("ROTKH: {:}", hex::encode(cmpa.rotkh));
+            }
+            println!("No CMPA verification implemented");
 
+            println!("=== CFPA ====");
             let cfpa = {
                 let mut cfpa_bytes = [0u8; 512];
                 let mut cfpa_file = std::fs::File::open(src_cfpa)?;
@@ -233,31 +237,34 @@ fn main() -> Result<()> {
                 CFPAPage::from_bytes(&cfpa_bytes)?
             };
 
-            println!();
-            println!("=== CFPA ====");
-
-            println!("Version: {:x}", cfpa.version);
-            println!("Secure FW Version: {:x}", cfpa.secure_firmware_version);
-            println!("Non-secure FW Version: {:x}", cfpa.ns_fw_version);
-            println!("Image key revoke: {:x}", cfpa.image_key_revoke);
-
             let rkth_revoke = cfpa.get_rkth_revoke()?;
-            println!("{:#?}", rkth_revoke);
+
+            if verbose {
+                println!("Version: {:x}", cfpa.version);
+                println!("Secure FW Version: {:x}", cfpa.secure_firmware_version);
+                println!("Non-secure FW Version: {:x}", cfpa.ns_fw_version);
+                println!("Image key revoke: {:x}", cfpa.image_key_revoke);
+                println!("{:#?}", rkth_revoke);
+            }
+            println!("No CFPA verification implemented");
 
             println!("=== Image ====");
             let image = std::fs::read(src_img)?;
             let image_len = u32::from_le_bytes(image[0x20..0x24].try_into().unwrap());
-            println!("image length: {image_len:#x} ({image_len})");
             let image_type = BootField::unpack(image[0x24..0x28].try_into().unwrap())?;
-            println!("image type: {image_type:#?}");
 
             let load_addr = u32::from_le_bytes(image[0x34..0x38].try_into().unwrap());
-            println!("load address: {load_addr:#x}");
             let is_plain = image_type.img_type == EnumCatchAll::Enum(BootImageType::PlainImage);
+
+            if verbose {
+                println!("image length: {image_len:#x} ({image_len})");
+                println!("image type: {image_type:#?}");
+                println!("load address: {load_addr:#x}");
+            }
             if is_plain && load_addr != 0 {
-                println!("⚠️  load address is non-0 in a non-plain image");
+                println!("⚠️  Load address is non-0 in a non-plain image");
             } else if !is_plain && load_addr == 0 {
-                println!("⚠️  load address is 0 in a non-plain image");
+                println!("⚠️  Load address is 0 in a non-plain image");
             }
 
             let secure_boot_enabled = matches!(
@@ -266,7 +273,9 @@ fn main() -> Result<()> {
                     | SecBootStatus::SignedImage2
                     | SecBootStatus::SignedImage3
             );
-            println!("secure boot enabled in CMPA: {secure_boot_enabled}");
+            if verbose {
+                println!("secure boot enabled in CMPA: {secure_boot_enabled}");
+            }
 
             println!("Checking TZM configuration");
             match secure_boot_cfg.tzm_image_type {
@@ -282,10 +291,10 @@ fn main() -> Result<()> {
                         if matches!(image_type.tzm_preset, TzmPreset::Present) {
                             todo!("don't yet know how to decode TZ preset");
                         } else {
-                            println!("    TZM enabled in image header, without preset data");
+                            println!("    ✅ TZM enabled in image header, without preset data");
                         }
                     } else {
-                        println!("    TZM disabled in image header");
+                        println!("    ✅ TZM disabled in image header");
                     }
                 }
                 TZMImageStatus::DisableTZM => {
@@ -298,7 +307,7 @@ fn main() -> Result<()> {
                             "    ⚠️  CFPA requires TZ disabled, but image header has tzm_preset"
                         );
                     } else {
-                        println!("    TZM disabled in CMPA and in image header");
+                        println!("    ✅ TZM disabled in CMPA and in image header");
                     }
                 }
                 TZMImageStatus::EnableTZM => {
@@ -310,14 +319,16 @@ fn main() -> Result<()> {
                         todo!("don't yet know how to decode TZ preset");
                     } else {
                         println!(
-                            "    TZM enabled in CMPA and in image header, without preset data"
+                            "    ✅ TZM enabled in CMPA and in image header, without preset data"
                         );
                     }
                 }
             }
 
             match image_type.img_type {
-                EnumCatchAll::Enum(BootImageType::SignedImage) => check_signed_image(&image, cmpa)?,
+                EnumCatchAll::Enum(BootImageType::SignedImage) => {
+                    check_signed_image(&image, cmpa, verbose)?
+                }
                 EnumCatchAll::Enum(BootImageType::CRCImage) => {
                     if secure_boot_enabled {
                         println!("⚠️  Secure boot enabled in CPFA, but this is a CRC image");
@@ -338,9 +349,8 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn check_signed_image(image: &[u8], cmpa: CMPAPage) -> Result<()> {
+fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()> {
     let header_offset = u32::from_le_bytes(image[0x28..0x2c].try_into().unwrap());
-    println!("header offset: {header_offset:#x} ({header_offset})");
 
     let cert_header_size = std::mem::size_of::<CertHeader>();
     let cert_header = CertHeader::unpack(
@@ -348,8 +358,11 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage) -> Result<()> {
             .try_into()
             .unwrap(),
     )?;
-    println!("cert header: {cert_header:#x?}");
-    println!("data.len(): {:#x}", image.len());
+    if verbose {
+        println!("header offset: {header_offset:#x} ({header_offset})");
+        println!("cert header: {cert_header:#x?}");
+        println!("data.len(): {:#x}", image.len());
+    }
 
     if cert_header.signature != *b"cert" {
         println!("⚠️  cert header does not begin with 'cert'");
@@ -364,21 +377,30 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage) -> Result<()> {
     }
 
     let mut start = (header_offset + cert_header.header_length) as usize;
-    let mut certs = vec![];
+    let mut certs: Vec<x509_parser::certificate::X509Certificate> = vec![];
     for i in 0..cert_header.certificate_count {
         let x509_length = u32::from_le_bytes(image[start..start + 4].try_into().unwrap());
         println!(
-            "checking certificate [{}/{}]",
+            "Checking certificate [{}/{}]",
             i + 1,
             cert_header.certificate_count
         );
-        println!("    certificate length: {x509_length}");
+        if verbose {
+            println!("    certificate length: {x509_length}");
+        }
         start += 4;
         let cert = &image[start..start + x509_length as usize];
 
-        let cert = x509_parser::parse_x509_certificate(cert)?;
+        let (_, cert) = x509_parser::parse_x509_certificate(cert)?;
         println!("    ✅ successfully parsed certificate");
-        certs.push(cert.1);
+
+        let prev_public_key = certs.last().map(|prev| prev.public_key());
+        match cert.verify_signature(prev_public_key) {
+            Ok(()) => println!("    ✅ Verified certificate signature"),
+            Err(e) => println!("    ⚠️  Failed to verify certificate signature: {e:?}"),
+        }
+
+        certs.push(cert);
         start += x509_length as usize;
 
         // TODO: verify that this certificate is signed by the previous one
@@ -388,11 +410,13 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage) -> Result<()> {
     let mut rkh_sha = sha2::Sha256::new();
     for i in 0..4 {
         let rot_hash = &image[start..start + 32];
-        print!("Root key hash {i}: ");
-        for r in rot_hash {
-            print!("{r:02x}");
+        if verbose {
+            print!("Root key hash {i}: ");
+            for r in rot_hash {
+                print!("{r:02x}");
+            }
+            println!();
         }
-        println!();
         rkh_sha.update(rot_hash);
         rkh_table.push(rot_hash.to_owned());
         start += 32;
@@ -424,8 +448,9 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage) -> Result<()> {
         .subject_public_key;
     let public_key_rsa = rsa::RsaPublicKey::from_pkcs1_der(public_key.as_ref()).unwrap();
     let signature = rsa::pkcs1v15::Signature::try_from(&image[start..]).unwrap();
-    println!("got signature {signature:x?}");
-    println!("signature length: {}", signature.as_ref().len());
+    if verbose {
+        println!("signature length: {}", signature.as_ref().len());
+    }
     let verifying_key =
         rsa::pkcs1v15::VerifyingKey::<rsa::sha2::Sha256>::new_with_prefix(public_key_rsa);
     match verifying_key.verify(&image[..start], &signature) {
