@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use lpc55_areas::{
     BootField, BootImageType, CFPAPage, CMPAPage, CertHeader, DebugSettings, RKTHRevoke,
@@ -210,9 +210,10 @@ fn main() -> Result<()> {
             println!("=== CMPA ====");
             let cmpa = {
                 let mut cmpa_bytes = [0u8; 512];
-                let mut cmpa_file = std::fs::File::open(src_cmpa)?;
+                let mut cmpa_file = std::fs::File::open(&src_cmpa)
+                    .with_context(|| format!("could not open {src_cmpa:?}"))?;
                 cmpa_file.read_exact(&mut cmpa_bytes)?;
-                CMPAPage::from_bytes(&cmpa_bytes)?
+                CMPAPage::from_bytes(&cmpa_bytes).context("could not load CMPA from bytes")?
             };
 
             let boot_cfg = cmpa.get_boot_cfg()?;
@@ -232,9 +233,10 @@ fn main() -> Result<()> {
             println!("=== CFPA ====");
             let cfpa = {
                 let mut cfpa_bytes = [0u8; 512];
-                let mut cfpa_file = std::fs::File::open(src_cfpa)?;
+                let mut cfpa_file = std::fs::File::open(&src_cfpa)
+                    .with_context(|| format!("could not open {src_cfpa:?}"))?;
                 cfpa_file.read_exact(&mut cfpa_bytes)?;
-                CFPAPage::from_bytes(&cfpa_bytes)?
+                CFPAPage::from_bytes(&cfpa_bytes).context("could not load CFPA from bytes")?
             };
 
             let rkth_revoke = cfpa.get_rkth_revoke()?;
@@ -280,15 +282,15 @@ fn main() -> Result<()> {
             println!("Checking TZM configuration");
             match secure_boot_cfg.tzm_image_type {
                 TZMImageStatus::PresetTZM => {
-                    if matches!(image_type.tzm_preset, TzmPreset::NotPresent) {
+                    if image_type.tzm_preset == TzmPreset::NotPresent {
                         println!("    ❌ CFPA requires TZ preset, but image header says it is not present");
                     } else {
                         todo!("don't yet know how to decode TZ preset");
                     }
                 }
                 TZMImageStatus::InImageHeader => {
-                    if matches!(image_type.tzm_image_type, TzmImageType::Enabled) {
-                        if matches!(image_type.tzm_preset, TzmPreset::Present) {
+                    if image_type.tzm_image_type == TzmImageType::Enabled {
+                        if image_type.tzm_preset == TzmPreset::Present {
                             todo!("don't yet know how to decode TZ preset");
                         } else {
                             println!("    ✅ TZM enabled in image header, without preset data");
@@ -298,11 +300,11 @@ fn main() -> Result<()> {
                     }
                 }
                 TZMImageStatus::DisableTZM => {
-                    if matches!(image_type.tzm_image_type, TzmImageType::Enabled) {
+                    if image_type.tzm_image_type == TzmImageType::Enabled {
                         println!(
                             "    ❌ CFPA requires TZ disabled, but image header says it is enabled"
                         );
-                    } else if matches!(image_type.tzm_preset, TzmPreset::Present) {
+                    } else if image_type.tzm_preset == TzmPreset::Present {
                         println!(
                             "    ❌ CFPA requires TZ disabled, but image header has tzm_preset"
                         );
@@ -311,11 +313,11 @@ fn main() -> Result<()> {
                     }
                 }
                 TZMImageStatus::EnableTZM => {
-                    if matches!(image_type.tzm_image_type, TzmImageType::Disabled) {
+                    if image_type.tzm_image_type == TzmImageType::Disabled {
                         println!(
                             "    ❌ CFPA requires TZ enabled, but image header says it is disabled"
                         );
-                    } else if matches!(image_type.tzm_preset, TzmPreset::Present) {
+                    } else if image_type.tzm_preset == TzmPreset::Present {
                         todo!("don't yet know how to decode TZ preset");
                     } else {
                         println!(

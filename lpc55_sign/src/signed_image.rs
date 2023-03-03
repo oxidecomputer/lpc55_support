@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use byteorder::{ByteOrder, WriteBytesExt};
 use lpc55_areas::*;
 use rsa::{
@@ -79,7 +79,10 @@ pub fn sign_chain(
         .cert_paths
         .iter()
         .flat_map(|path| {
-            let cert_bytes = std::fs::read(prefix.join(path)).unwrap();
+            let full_path = prefix.join(path);
+            let cert_bytes = std::fs::read(&full_path)
+                .with_context(|| format!("could not load cert at {full_path:?}"))
+                .unwrap();
             let cert_pad = get_pad(cert_bytes.len());
             let padded_len = cert_bytes.len() + cert_pad;
             let mut v = Vec::new();

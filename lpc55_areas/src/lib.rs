@@ -9,21 +9,21 @@ use packed_struct::prelude::*;
 use serde::Deserialize;
 
 // Table 183, section 7.3.4
-#[derive(PrimitiveEnum, Copy, Clone, Debug)]
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum BootImageType {
     PlainImage = 0x0,
     SignedImage = 0x4,
     CRCImage = 0x5,
 }
 
-#[derive(PrimitiveEnum, Copy, Clone, Debug)]
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum TzmImageType {
     Enabled = 0x0,
     Disabled = 0x1,
 }
 
 // Table 192
-#[derive(PrimitiveEnum, Copy, Clone, Debug)]
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum TzmPreset {
     NotPresent = 0x0,
     Present = 0x1,
@@ -44,10 +44,7 @@ impl BootField {
     pub fn new(image_type: BootImageType) -> BootField {
         // Table 183, section 7.3.4 for the magic numbers
         BootField {
-            // 0 = TZ-M enabled image. Images are only built
-            // in secure mode at the moment
             tzm_image_type: TzmImageType::Enabled,
-            // 0 = no preset data
             tzm_preset: TzmPreset::NotPresent,
             img_type: image_type.into(),
         }
