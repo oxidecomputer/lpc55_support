@@ -749,10 +749,6 @@ pub struct CFPAPage {
 }
 
 impl CFPAPage {
-    pub fn update_version(&mut self) {
-        self.version += 1;
-    }
-
     pub fn set_debug_fields(&mut self, settings: DebugSettings) -> Result<()> {
         self.dcfg_cc_socu_ns_pin = settings.pin();
         self.dcfg_cc_socu_ns_dflt = settings.dflt();

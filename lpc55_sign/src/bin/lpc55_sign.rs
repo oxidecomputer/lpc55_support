@@ -157,7 +157,7 @@ fn main() -> Result<()> {
             );
             if let Some(cfpa_path) = cfpa {
                 let mut cfpa = CFPAPage::default();
-                cfpa.update_version();
+                cfpa.version += 1; // allow overwrite of default 0
 
                 let mut rkth = RKTHRevoke::new();
                 rkth.rotk0 = ROTKeyStatus::enabled().into();

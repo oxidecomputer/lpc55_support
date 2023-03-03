@@ -397,10 +397,7 @@ fn main() -> Result<()> {
                     ping.version, pong.version
                 );
                 let start_version = u32::max(ping.version, pong.version);
-                if new_cfpa.version != start_version {
-                    new_cfpa.version = start_version;
-                }
-                new_cfpa.update_version();
+                new_cfpa.version = start_version + 1;
                 println!("note: updated version is {}", new_cfpa.version);
             }
 
