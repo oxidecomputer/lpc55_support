@@ -281,7 +281,7 @@ fn main() -> Result<()> {
             match secure_boot_cfg.tzm_image_type {
                 TZMImageStatus::PresetTZM => {
                     if matches!(image_type.tzm_preset, TzmPreset::NotPresent) {
-                        println!("    🚫 CFPA requires TZ preset, but image header says it is not present");
+                        println!("    ❌ CFPA requires TZ preset, but image header says it is not present");
                     } else {
                         todo!("don't yet know how to decode TZ preset");
                     }
@@ -300,11 +300,11 @@ fn main() -> Result<()> {
                 TZMImageStatus::DisableTZM => {
                     if matches!(image_type.tzm_image_type, TzmImageType::Enabled) {
                         println!(
-                            "    🚫 CFPA requires TZ disabled, but image header says it is enabled"
+                            "    ❌ CFPA requires TZ disabled, but image header says it is enabled"
                         );
                     } else if matches!(image_type.tzm_preset, TzmPreset::Present) {
                         println!(
-                            "    🚫 CFPA requires TZ disabled, but image header has tzm_preset"
+                            "    ❌ CFPA requires TZ disabled, but image header has tzm_preset"
                         );
                     } else {
                         println!("    ✅ TZM disabled in CMPA and in image header");
@@ -313,7 +313,7 @@ fn main() -> Result<()> {
                 TZMImageStatus::EnableTZM => {
                     if matches!(image_type.tzm_image_type, TzmImageType::Disabled) {
                         println!(
-                            "    🚫 CFPA requires TZ enabled, but image header says it is disabled"
+                            "    ❌ CFPA requires TZ enabled, but image header says it is disabled"
                         );
                     } else if matches!(image_type.tzm_preset, TzmPreset::Present) {
                         todo!("don't yet know how to decode TZ preset");
@@ -331,13 +331,13 @@ fn main() -> Result<()> {
                 }
                 EnumCatchAll::Enum(BootImageType::CRCImage) => {
                     if secure_boot_enabled {
-                        println!("🚫 Secure boot enabled in CPFA, but this is a CRC image");
+                        println!("❌ Secure boot enabled in CPFA, but this is a CRC image");
                     }
                     check_crc_image(&image)?
                 }
                 EnumCatchAll::Enum(BootImageType::PlainImage) => {
                     if secure_boot_enabled {
-                        println!("🚫 Secure boot enabled in CPFA, but this is a plain image");
+                        println!("❌ Secure boot enabled in CPFA, but this is a plain image");
                     }
                     check_plain_image(&image)?
                 }
@@ -365,7 +365,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
     }
 
     if cert_header.signature != *b"cert" {
-        println!("🚫 Certificate header does not begin with 'cert'");
+        println!("❌ Certificate header does not begin with 'cert'");
     }
 
     if cert_header.total_image_len != header_offset + cert_header.header_length {
@@ -397,7 +397,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
         let prev_public_key = certs.last().map(|prev| prev.public_key());
         match cert.verify_signature(prev_public_key) {
             Ok(()) => println!("    ✅ Verified certificate signature"),
-            Err(e) => println!("    🚫 Failed to verify certificate signature: {e:?}"),
+            Err(e) => println!("    ❌ Failed to verify certificate signature: {e:?}"),
         }
 
         certs.push(cert);
@@ -423,7 +423,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
     }
 
     if rkh_sha.finalize().as_slice() != cmpa.rotkh {
-        println!("🚫 RKH in CMPA does not match Root Key hashes in image");
+        println!("❌ RKH in CMPA does not match Root Key hashes in image");
     } else {
         println!("✅ RKH in CMPA matches Root Key hashes in image");
     }
@@ -435,7 +435,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
     sha.update(public_key_rsa.e().to_bytes_be());
     let out = sha.finalize().to_vec();
     if !rkh_table.contains(&out) {
-        println!("🚫 Certificate 0's public key is not in RKH table");
+        println!("❌ Certificate 0's public key is not in RKH table");
     } else {
         println!("✅ Certificate 0's public key is in RKH table");
     }
@@ -455,7 +455,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
         rsa::pkcs1v15::VerifyingKey::<rsa::sha2::Sha256>::new_with_prefix(public_key_rsa);
     match verifying_key.verify(&image[..start], &signature) {
         Ok(()) => println!("✅ Verified signature against last certificate"),
-        Err(e) => println!("🚫 Failed to verify signature: {e:?}"),
+        Err(e) => println!("❌ Failed to verify signature: {e:?}"),
     }
     Ok(())
 }
@@ -469,7 +469,7 @@ fn check_crc_image(image: &[u8]) -> Result<()> {
     if expected == actual {
         println!("✅ CRC32 matches");
     } else {
-        println!("🚫 CRC32 does not match");
+        println!("❌ CRC32 does not match");
     }
     Ok(())
 }
