@@ -366,14 +366,19 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
 
     if cert_header.signature != *b"cert" {
         println!("❌ Certificate header does not begin with 'cert'");
+    } else {
+        println!("✅ Verified certificate header signature ('cert')");
     }
 
-    if cert_header.total_image_len != header_offset + cert_header.header_length {
+    let expected_len =
+        header_offset + cert_header.header_length + cert_header.certificate_table_len + 32 * 4;
+    if cert_header.total_image_len != expected_len {
         println!(
-            "⚠️  mismatched lengths (?) ({} != {})",
-            cert_header.total_image_len,
-            header_offset + cert_header.header_length
+            "❌ Invalid image length in cert header: expected {expected_len}, got {}",
+            cert_header.total_image_len
         );
+    } else {
+        println!("✅ Verified certificate header length");
     }
 
     let mut start = (header_offset + cert_header.header_length) as usize;
