@@ -523,6 +523,7 @@ dependencies = [
  "p256",
  "packed_struct",
  "packed_struct_codegen",
+ "parse_int",
  "rsa",
  "serde",
  "sha2",
@@ -711,9 +712,9 @@ dependencies = [
 
 [[package]]
 name = "parse_int"
-version = "0.4.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82db48cac18f0963b10ddad303fa88447b95bbe0e6dbe3385f98402b63d0cc48"
+checksum = "2d695b79916a2c08bcff7be7647ab60d1402885265005a6658ffe6d763553c5a"
 dependencies = [
  "num-traits",
 ]

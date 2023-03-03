@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use byteorder::ByteOrder;
 use clap::Parser;
 use lpc55_isp::cmd::*;
@@ -38,6 +38,13 @@ enum ISPCommand {
     /// Erases all non-secure flash. This MUST be done before writing!
     #[clap(name = "flash-erase-all")]
     FlashEraseAll,
+    /// Erases a portion of non-secure flash. This MUST be done before writing!
+    FlashEraseRegion {
+        #[clap(parse(try_from_str = parse_int::parse))]
+        start_address: u32,
+        #[clap(parse(try_from_str = parse_int::parse))]
+        byte_count: u32,
+    },
     /// Write a file to the CMPA region
     #[clap(name = "write-cmpa")]
     WriteCMPA {
@@ -54,6 +61,13 @@ enum ISPCommand {
     },
     /// Save the CFPA region to a file
     ReadCFPA {
+        #[clap(parse(from_os_str))]
+        file: PathBuf,
+    },
+    /// Write the CFPA region from the contents of a file.
+    WriteCFPA {
+        #[clap(short, long)]
+        update_version: bool,
         #[clap(parse(from_os_str))]
         file: PathBuf,
     },
@@ -281,6 +295,16 @@ fn main() -> Result<()> {
 
             println!("Flash erased!");
         }
+        ISPCommand::FlashEraseRegion {
+            start_address,
+            byte_count,
+        } => {
+            do_ping(&mut *port)?;
+
+            do_isp_flash_erase_region(&mut *port, start_address, byte_count)?;
+
+            println!("Flash region erased!");
+        }
         // Yes this is just another write-memory call but remembering addresses
         // is hard.
         ISPCommand::WriteCMPA { file } => {
@@ -332,6 +356,54 @@ fn main() -> Result<()> {
 
             out.write_all(&m)?;
             println!("CFPA Output written to {:?}", file);
+        }
+        ISPCommand::WriteCFPA {
+            update_version,
+            file,
+        } => {
+            do_ping(&mut *port)?;
+
+            let bytes = std::fs::read(&file)?;
+            let mut new_cfpa = lpc55_areas::CFPAPage::from_bytes(
+                bytes[..].try_into().context("CFPA file is not 512 bytes")?,
+            )?;
+
+            // Read the CMPA so we can compare the two to try to avoid locking
+            // the user out of their chip.
+            let m = do_isp_read_memory(&mut *port, 0x9e400, 512)?;
+            let cmpa = lpc55_areas::CMPAPage::from_bytes(m[..].try_into().unwrap())?;
+            if (new_cfpa.dcfg_cc_socu_ns_pin != 0 || new_cfpa.dcfg_cc_socu_ns_dflt != 0)
+                && (cmpa.cc_socu_pin == 0 || cmpa.cc_socu_dflt == 0)
+            {
+                bail!(
+                    "It looks like the CMPA debug settings aren't set but \
+                     the CFPA settings are! This will brick the chip!"
+                );
+                // TODO I guess it's remotely possible that we might want an
+                // override for this check.
+            }
+
+            if update_version {
+                // Read the current CFPA areas to figure out what version we
+                // need to set.
+                let ping = do_isp_read_memory(&mut *port, 0x9_e000, 512)?;
+                let pong = do_isp_read_memory(&mut *port, 0x9_e200, 512)?;
+
+                let ping = lpc55_areas::CFPAPage::from_bytes(ping[..].try_into().unwrap())?;
+                let pong = lpc55_areas::CFPAPage::from_bytes(pong[..].try_into().unwrap())?;
+
+                println!(
+                    "ping sector v={}, pong sector v={}",
+                    ping.version, pong.version
+                );
+                let start_version = u32::max(ping.version, pong.version);
+                new_cfpa.version = start_version + 1;
+                println!("note: updated version is {}", new_cfpa.version);
+            }
+
+            let new_bytes = new_cfpa.to_vec()?;
+            do_isp_write_memory(&mut *port, 0x9_de00, new_bytes)?;
+            println!("Write to CFPA done!");
         }
         ISPCommand::Restore => {
             do_ping(&mut *port)?;

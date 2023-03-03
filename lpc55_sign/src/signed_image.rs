@@ -58,6 +58,7 @@ pub fn sign_chain(
     cert_path_prefix: Option<&Path>,
     certs: &[CertChain],
     outfile_path: &Path,
+    execution_address: u32,
 ) -> Result<[u8; 32]> {
     validate_certs(certs)?;
 
@@ -152,8 +153,8 @@ pub fn sign_chain(
     let boot_field = BootField::new(BootImageType::SignedImage);
 
     bytes[0x24..0x28].clone_from_slice(&boot_field.pack()?);
-    // Our execution address is always 0
-    byteorder::LittleEndian::write_u32(&mut bytes[0x34..0x38], 0x0);
+    // Our execution address goes in the next word
+    byteorder::LittleEndian::write_u32(&mut bytes[0x34..0x38], execution_address);
     // where to find the block. For now just stick it right after the image
     byteorder::LittleEndian::write_u32(&mut bytes[0x28..0x2c], (image_len + image_pad) as u32);
 
@@ -222,6 +223,7 @@ pub fn sign_image(
     priv_key_path: &Path,
     root_cert0_path: &Path,
     outfile_path: &Path,
+    execution_address: u32,
 ) -> Result<[u8; 32]> {
     let mut bytes = std::fs::read(binary_path)?;
     let image_pad = get_pad(bytes.len());
@@ -283,8 +285,8 @@ pub fn sign_image(
     let boot_field = BootField::new(BootImageType::SignedImage);
 
     bytes[0x24..0x28].clone_from_slice(&boot_field.pack()?);
-    // Our execution address is always 0
-    byteorder::LittleEndian::write_u32(&mut bytes[0x34..0x38], 0x0);
+    // Our execution address goes in the next word
+    byteorder::LittleEndian::write_u32(&mut bytes[0x34..0x38], execution_address);
     // where to find the block. For now just stick it right after the image
     byteorder::LittleEndian::write_u32(&mut bytes[0x28..0x2c], (image_len + image_pad) as u32);
 

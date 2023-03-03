@@ -51,7 +51,7 @@ fn main() -> Result<()> {
     let mut cfpa: CFPAPage = CFPAPage::unpack(&cfpa)?;
 
     // We always need to bump the version
-    cfpa.update_version();
+    cfpa.version += 1;
 
     let mut rkth = RKTHRevoke::new();
 

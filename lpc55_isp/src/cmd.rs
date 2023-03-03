@@ -238,6 +238,29 @@ pub fn do_isp_flash_erase_all(port: &mut dyn serialport::SerialPort) -> Result<(
     Ok(())
 }
 
+pub fn do_isp_flash_erase_region(
+    port: &mut dyn serialport::SerialPort,
+    start_address: u32,
+    byte_count: u32,
+) -> Result<()> {
+    let args = vec![
+        start_address,
+        byte_count,
+        // Erase internal flash
+        0x0_u32,
+    ];
+
+    do_command(
+        port,
+        CommandTag::FlashEraseRegion,
+        ResponseCode::Generic,
+        args,
+        DataPhase::NoData,
+    )?;
+
+    Ok(())
+}
+
 pub fn do_isp_get_property(
     port: &mut dyn serialport::SerialPort,
     prop: BootloaderProperty,
