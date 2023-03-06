@@ -23,6 +23,7 @@ lpc55_areas = { path = "../lpc55_areas", features = [] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.5.6"
 parse_int = "0.6.0"
+colored = "2.0"
 
 [features]
 default = ["binaries"]

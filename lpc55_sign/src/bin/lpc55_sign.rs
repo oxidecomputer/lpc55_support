@@ -4,6 +4,7 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use colored::Colorize;
 use lpc55_areas::{
     BootField, BootImageType, CFPAPage, CMPAPage, CertHeader, DebugSettings, RKTHRevoke,
     ROTKeyStatus, SecBootStatus, TZMImageStatus, TzmImageType, TzmPreset,
@@ -104,6 +105,24 @@ enum Command {
 struct Opts {
     #[clap(subcommand)]
     cmd: Command,
+}
+
+macro_rules! check {
+    (OK, $($arg:tt)*) => {
+        check!("[okay]".green(), $($arg)*)
+    };
+    (WARN, $($arg:tt)*) => {
+        check!("[warn]".yellow(), $($arg)*)
+    };
+    (ERR, $($arg:tt)*) => {
+        check!("[err] ".red(), $($arg)*)
+    };
+    ($foo:expr, $($arg:tt)*) => {{
+        let s = format!($($arg)*);
+        let s_ = s.trim_start();
+        let pad = s.len() - s_.len();
+        println!("{:pad$}{} {}", "", $foo, s_, pad=pad)
+    }};
 }
 
 fn main() -> Result<()> {
@@ -264,9 +283,9 @@ fn main() -> Result<()> {
                 println!("load address: {load_addr:#x}");
             }
             if is_plain && load_addr != 0 {
-                println!("⚠️  Load address is non-0 in a non-plain image");
+                check!(WARN, "Load address is non-0 in a plain image",);
             } else if !is_plain && load_addr == 0 {
-                println!("⚠️  Load address is 0 in a non-plain image");
+                check!(WARN, "Load address is 0 in a non-plain image",);
             }
 
             let secure_boot_enabled = matches!(
@@ -283,7 +302,10 @@ fn main() -> Result<()> {
             match secure_boot_cfg.tzm_image_type {
                 TZMImageStatus::PresetTZM => {
                     if image_type.tzm_preset == TzmPreset::NotPresent {
-                        println!("    ❌ CFPA requires TZ preset, but image header says it is not present");
+                        check!(
+                            ERR,
+                            "CFPA requires TZ preset, but image header says it is not present"
+                        );
                     } else {
                         todo!("don't yet know how to decode TZ preset");
                     }
@@ -293,35 +315,39 @@ fn main() -> Result<()> {
                         if image_type.tzm_preset == TzmPreset::Present {
                             todo!("don't yet know how to decode TZ preset");
                         } else {
-                            println!("    ✅ TZM enabled in image header, without preset data");
+                            check!(OK, "TZM enabled in image header, without preset data");
                         }
                     } else {
-                        println!("    ✅ TZM disabled in image header");
+                        check!(OK, "TZM disabled in image header");
                     }
                 }
                 TZMImageStatus::DisableTZM => {
                     if image_type.tzm_image_type == TzmImageType::Enabled {
-                        println!(
-                            "    ❌ CFPA requires TZ disabled, but image header says it is enabled"
+                        check!(
+                            ERR,
+                            "CFPA requires TZ disabled, but image header says it is enabled"
                         );
                     } else if image_type.tzm_preset == TzmPreset::Present {
-                        println!(
-                            "    ❌ CFPA requires TZ disabled, but image header has tzm_preset"
+                        check!(
+                            ERR,
+                            "CFPA requires TZ disabled, but image header has tzm_preset"
                         );
                     } else {
-                        println!("    ✅ TZM disabled in CMPA and in image header");
+                        check!(OK, "TZM disabled in CMPA and in image header");
                     }
                 }
                 TZMImageStatus::EnableTZM => {
                     if image_type.tzm_image_type == TzmImageType::Disabled {
-                        println!(
-                            "    ❌ CFPA requires TZ enabled, but image header says it is disabled"
+                        check!(
+                            ERR,
+                            "CFPA requires TZ enabled, but image header says it is disabled"
                         );
                     } else if image_type.tzm_preset == TzmPreset::Present {
                         todo!("don't yet know how to decode TZ preset");
                     } else {
-                        println!(
-                            "    ✅ TZM enabled in CMPA and in image header, without preset data"
+                        check!(
+                            OK,
+                            "TZM enabled in CMPA and in image header, without preset data"
                         );
                     }
                 }
@@ -333,13 +359,16 @@ fn main() -> Result<()> {
                 }
                 EnumCatchAll::Enum(BootImageType::CRCImage) => {
                     if secure_boot_enabled {
-                        println!("❌ Secure boot enabled in CPFA, but this is a CRC image");
+                        check!(ERR, "Secure boot enabled in CPFA, but this is a CRC image");
                     }
                     check_crc_image(&image)?
                 }
                 EnumCatchAll::Enum(BootImageType::PlainImage) => {
                     if secure_boot_enabled {
-                        println!("❌ Secure boot enabled in CPFA, but this is a plain image");
+                        check!(
+                            ERR,
+                            "Secure boot enabled in CPFA, but this is a plain image"
+                        );
                     }
                     check_plain_image(&image)?
                 }
@@ -367,20 +396,21 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
     }
 
     if cert_header.signature != *b"cert" {
-        println!("❌ Certificate header does not begin with 'cert'");
+        check!(ERR, "Certificate header does not begin with 'cert'");
     } else {
-        println!("✅ Verified certificate header signature ('cert')");
+        check!(OK, "Verified certificate header signature ('cert')");
     }
 
     let expected_len =
         header_offset + cert_header.header_length + cert_header.certificate_table_len + 32 * 4;
     if cert_header.total_image_len != expected_len {
-        println!(
-            "❌ Invalid image length in cert header: expected {expected_len}, got {}",
+        check!(
+            ERR,
+            "Invalid image length in cert header: expected {expected_len}, got {}",
             cert_header.total_image_len
         );
     } else {
-        println!("✅ Verified certificate header length");
+        check!(OK, "Verified certificate header length");
     }
 
     let mut start = (header_offset + cert_header.header_length) as usize;
@@ -399,7 +429,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
         let cert = &image[start..start + x509_length as usize];
 
         let (_, cert) = x509_parser::parse_x509_certificate(cert)?;
-        println!("    ✅ Successfully parsed certificate");
+        check!(OK, "    Successfully parsed certificate");
 
         let prev_public_key = certs.last().map(|prev| prev.public_key());
         let kind = if prev_public_key.is_some() {
@@ -408,8 +438,11 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
             "self-signed"
         };
         match cert.verify_signature(prev_public_key) {
-            Ok(()) => println!("    ✅ Verified {kind} certificate signature"),
-            Err(e) => println!("    ❌ Failed to verify {kind} certificate signature: {e:?}"),
+            Ok(()) => check!(OK, "    Verified {kind} certificate signature"),
+            Err(e) => check!(
+                ERR,
+                "    Failed to verify {kind} certificate signature: {e:?}"
+            ),
         }
 
         certs.push(cert);
@@ -435,9 +468,9 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
     }
 
     if rkh_sha.finalize().as_slice() != cmpa.rotkh {
-        println!("❌ RKH in CMPA does not match Root Key hashes in image");
+        check!(ERR, "RKH in CMPA does not match Root Key hashes in image");
     } else {
-        println!("✅ RKH in CMPA matches Root Key hashes in image");
+        check!(OK, "RKH in CMPA matches Root Key hashes in image");
     }
 
     let mut sha = sha2::Sha256::new();
@@ -447,9 +480,9 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
     sha.update(public_key_rsa.e().to_bytes_be());
     let out = sha.finalize().to_vec();
     if !rkh_table.contains(&out) {
-        println!("❌ Certificate 0's public key is not in RKH table");
+        check!(ERR, "Certificate 0's public key is not in RKH table");
     } else {
-        println!("✅ Certificate 0's public key is in RKH table");
+        check!(OK, "Certificate 0's public key is in RKH table");
     }
 
     let public_key = &certs
@@ -466,8 +499,8 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
     let verifying_key =
         rsa::pkcs1v15::VerifyingKey::<rsa::sha2::Sha256>::new_with_prefix(public_key_rsa);
     match verifying_key.verify(&image[..start], &signature) {
-        Ok(()) => println!("✅ Verified signature against last certificate"),
-        Err(e) => println!("❌ Failed to verify signature: {e:?}"),
+        Ok(()) => check!(OK, "Verified signature against last certificate"),
+        Err(e) => check!(ERR, "Failed to verify signature: {e:?}"),
     }
     Ok(())
 }
@@ -479,14 +512,14 @@ fn check_crc_image(image: &[u8]) -> Result<()> {
     let expected = crc.get_crc();
     let actual = u32::from_le_bytes(image[0x28..0x2c].try_into().unwrap());
     if expected == actual {
-        println!("✅ CRC32 matches");
+        check!(OK, "CRC32 matches");
     } else {
-        println!("❌ CRC32 does not match");
+        check!(ERR, "CRC32 does not match");
     }
     Ok(())
 }
 
 fn check_plain_image(_image: &[u8]) -> Result<()> {
-    println!("✅ Nothing to check for plain image");
+    check!(OK, "Nothing to check for plain image");
     Ok(())
 }
