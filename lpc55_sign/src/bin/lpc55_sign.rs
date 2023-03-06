@@ -430,6 +430,14 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage, verbose: boo
 
         let (_, cert) = x509_parser::parse_x509_certificate(cert)?;
         check!(OK, "    Successfully parsed certificate");
+        println!(
+            "    Subject:\n      {}",
+            cert.subject().to_string().replace(", ", "\n      ")
+        );
+        println!(
+            "    Issuer:\n      {}",
+            cert.issuer().to_string().replace(", ", "\n      ")
+        );
 
         let prev_public_key = certs.last().map(|prev| prev.public_key());
         let kind = if prev_public_key.is_some() {
