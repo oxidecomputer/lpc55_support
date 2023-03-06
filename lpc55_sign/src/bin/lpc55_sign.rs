@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 use colored::Colorize;
 use lpc55_areas::{
@@ -355,7 +355,7 @@ fn main() -> Result<()> {
 
             match image_type.img_type {
                 EnumCatchAll::Enum(BootImageType::SignedImage) => {
-                    check_signed_image(&image, cmpa, verbose)?
+                    check_signed_image(&image, cmpa, cfpa, verbose)?
                 }
                 EnumCatchAll::Enum(BootImageType::CRCImage) => {
                     if secure_boot_enabled {
@@ -380,7 +380,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()> {
+fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage, verbose: bool) -> Result<()> {
     let header_offset = u32::from_le_bytes(image[0x28..0x2c].try_into().unwrap());
 
     let cert_header_size = std::mem::size_of::<CertHeader>();
@@ -437,6 +437,9 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
         } else {
             "self-signed"
         };
+
+        // If this is the root certificate, then `prev_public_key` is `None` and
+        // `verify_signature` checks that it is correctly self-signed.
         match cert.verify_signature(prev_public_key) {
             Ok(()) => check!(OK, "    Verified {kind} certificate signature"),
             Err(e) => check!(
@@ -447,8 +450,6 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
 
         certs.push(cert);
         start += x509_length as usize;
-
-        // TODO: verify that this certificate is signed by the previous one
     }
 
     let mut rkh_table = vec![];
@@ -479,10 +480,23 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
     sha.update(public_key_rsa.n().to_bytes_be());
     sha.update(public_key_rsa.e().to_bytes_be());
     let out = sha.finalize().to_vec();
-    if !rkh_table.contains(&out) {
-        check!(ERR, "Certificate 0's public key is not in RKH table");
+    if let Some((index, _)) = rkh_table.iter().enumerate().find(|(_, k)| *k == &out) {
+        check!(OK, "Root certificate's public key is in RKH table");
+        let rkth_revoke = cfpa.get_rkth_revoke()?;
+        let rotk_status = match index {
+            0 => rkth_revoke.rotk0,
+            1 => rkth_revoke.rotk1,
+            2 => rkth_revoke.rotk2,
+            3 => rkth_revoke.rotk3,
+            i => bail!("Invalid certificate index {i}"),
+        };
+        if rotk_status == ROTKeyStatus::Invalid {
+            check!(ERR, "RKH table has revoked this root certificate");
+        } else {
+            check!(OK, "RKH table has enabled this root certificate");
+        }
     } else {
-        check!(OK, "Certificate 0's public key is in RKH table");
+        check!(ERR, "Certificate 0's public key is not in RKH table");
     }
 
     let public_key = &certs
@@ -499,7 +513,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, verbose: bool) -> Result<()>
     let verifying_key =
         rsa::pkcs1v15::VerifyingKey::<rsa::sha2::Sha256>::new_with_prefix(public_key_rsa);
     match verifying_key.verify(&image[..start], &signature) {
-        Ok(()) => check!(OK, "Verified signature against last certificate"),
+        Ok(()) => check!(OK, "Verified image signature against last certificate"),
         Err(e) => check!(ERR, "Failed to verify signature: {e:?}"),
     }
     Ok(())

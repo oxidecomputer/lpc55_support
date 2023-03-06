@@ -607,7 +607,7 @@ impl CertHeader {
     }
 }
 
-#[derive(PrimitiveEnum, Copy, Clone, Debug, Deserialize)]
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum ROTKeyStatus {
     Invalid = 0x0,
