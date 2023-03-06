@@ -2,38 +2,50 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use std::fmt::Debug;
+
 use anyhow::Result;
 use packed_struct::prelude::*;
 use serde::Deserialize;
 
 // Table 183, section 7.3.4
-#[derive(PrimitiveEnum, Copy, Clone, Debug)]
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum BootImageType {
     PlainImage = 0x0,
     SignedImage = 0x4,
     CRCImage = 0x5,
 }
 
-#[derive(PackedStruct)]
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Eq, PartialEq)]
+pub enum TzmImageType {
+    Enabled = 0x0,
+    Disabled = 0x1,
+}
+
+// Table 192
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Eq, PartialEq)]
+pub enum TzmPreset {
+    NotPresent = 0x0,
+    Present = 0x1,
+}
+
+#[derive(Debug, PackedStruct)]
 #[packed_struct(size_bytes = "4", bit_numbering = "msb0")]
 pub struct BootField {
     #[packed_field(ty = "enum", bits = "0..8")]
     pub img_type: EnumCatchAll<BootImageType>,
-    #[packed_field(bits = "13")]
-    pub tzm_preset: bool,
-    #[packed_field(bits = "14")]
-    pub tzm_image_type: bool,
+    #[packed_field(ty = "enum", bits = "13")]
+    pub tzm_preset: TzmPreset,
+    #[packed_field(ty = "enum", bits = "14")]
+    pub tzm_image_type: TzmImageType,
 }
 
 impl BootField {
     pub fn new(image_type: BootImageType) -> BootField {
         // Table 183, section 7.3.4 for the magic numbers
         BootField {
-            // 0 = TZ-M enabled image. Images are only built
-            // in secure mode at the moment
-            tzm_image_type: false,
-            // 0 = no preset data
-            tzm_preset: false,
+            tzm_image_type: TzmImageType::Enabled,
+            tzm_preset: TzmPreset::NotPresent,
             img_type: image_type.into(),
         }
     }
@@ -152,7 +164,8 @@ impl Default for DebugSettings {
 }
 
 bitfield::bitfield! {
-    struct CCSOCUPin(u32);
+    pub struct CCSOCUPin(u32);
+    impl Debug;
     pub non_invasive_debug, set_non_invasive_debug: 0;
     pub invasive_debug, set_invasive_debug: 1;
     pub secure_non_invasive_debug, set_secure_non_invasive_debug: 2;
@@ -173,7 +186,8 @@ impl CCSOCUPin {
 }
 
 bitfield::bitfield! {
-    struct CCSOCUDflt(u32);
+    pub struct CCSOCUDflt(u32);
+    impl Debug;
     pub non_invasive_debug, set_non_invasive_debug: 0;
     pub invasive_debug, set_invasive_debug: 1;
     pub secure_non_invasive_debug, set_secure_non_invasive_debug: 2;
@@ -268,63 +282,64 @@ pub enum SecBootStatus {
     SignedImage3 = 0x3,
 }
 
+/// `SECURE_BOOT_CFG` configuration word (`0x3E41C`)
 #[derive(Debug, Clone, PackedStruct)]
 #[packed_struct(size_bytes = "4", endian = "lsb", bit_numbering = "lsb0")]
 pub struct SecureBootCfg {
     /// Can force boot to 4096 bit keys only
     #[packed_field(ty = "enum", bits = "0..=1")]
-    pub rsa4k: EnumCatchAll<RSA4KStatus>,
+    pub rsa4k: RSA4KStatus,
 
     /// Include NXP area in DICE calculation
     #[packed_field(ty = "enum", bits = "2..=3")]
-    pub dice_inc_nxp_cfg: EnumCatchAll<DiceNXPIncStatus>,
+    pub dice_inc_nxp_cfg: DiceNXPIncStatus,
 
     /// Inlcude Customer area in DICE calculation
     #[packed_field(ty = "enum", bits = "4..=5")]
-    pub dice_cust_cfg: EnumCatchAll<DiceCustIncStatus>,
+    pub dice_cust_cfg: DiceCustIncStatus,
 
     /// Enable DICE
     #[packed_field(ty = "enum", bits = "6..=7")]
-    pub skip_dice: EnumCatchAll<EnableDiceStatus>,
+    pub skip_dice: EnableDiceStatus,
 
     /// Choose TZ image type. Similar to the field that's in the image at 0x24
     /// See also why the default is to just use what's in the image
     #[packed_field(ty = "enum", bits = "8..=9")]
-    pub tzm_image_type: EnumCatchAll<TZMImageStatus>,
+    pub tzm_image_type: TZMImageStatus,
 
     /// Block SetKey PUF operation
     #[packed_field(ty = "enum", bits = "10..=11")]
-    pub block_set_key: EnumCatchAll<SetKeyStatus>,
+    pub block_set_key: SetKeyStatus,
 
     /// Block EnrollKey Operationg
     #[packed_field(ty = "enum", bits = "12..=13")]
-    pub block_enroll: EnumCatchAll<EnrollStatus>,
+    pub block_enroll: EnrollStatus,
 
     /// Undocumented?
     #[packed_field(ty = "enum", bits = "14..=15")]
-    pub dice_inc_sec_epoch: EnumCatchAll<DiceIncSecEpoch>,
+    pub dice_inc_sec_epoch: DiceIncSecEpoch,
 
     #[packed_field(bits = "29..=16")]
     _reserved: ReservedZero<packed_bits::Bits<14>>,
 
     /// Enable secure boot
     #[packed_field(ty = "enum", bits = "30..=31")]
-    pub sec_boot_en: EnumCatchAll<SecBootStatus>,
+    pub sec_boot_en: SecBootStatus,
 }
 
 impl SecureBootCfg {
     pub fn new() -> SecureBootCfg {
         SecureBootCfg {
-            rsa4k: RSA4KStatus::RSA2048Keys.into(),
-            dice_inc_nxp_cfg: DiceNXPIncStatus::NotIncluded.into(),
-            dice_cust_cfg: DiceCustIncStatus::NotIncluded.into(),
-            skip_dice: EnableDiceStatus::EnableDice.into(),
-            tzm_image_type: TZMImageStatus::InImageHeader.into(),
-            block_set_key: SetKeyStatus::EnableKeyCode.into(),
-            block_enroll: EnrollStatus::EnableEnroll.into(),
-            dice_inc_sec_epoch: DiceIncSecEpoch::NotIncluded.into(),
+            rsa4k: RSA4KStatus::RSA2048Keys,
+            dice_inc_nxp_cfg: DiceNXPIncStatus::NotIncluded,
+            dice_cust_cfg: DiceCustIncStatus::NotIncluded,
+            skip_dice: EnableDiceStatus::EnableDice,
+            tzm_image_type: TZMImageStatus::InImageHeader,
+            block_set_key: SetKeyStatus::EnableKeyCode,
+            block_enroll: EnrollStatus::EnableEnroll,
+            dice_inc_sec_epoch: DiceIncSecEpoch::NotIncluded,
             _reserved: ReservedZero::<packed_bits::Bits<14>>::default(),
-            sec_boot_en: SecBootStatus::PlainImage.into(),
+            sec_boot_en: SecBootStatus::PlainImage,
         }
     }
 }
@@ -332,33 +347,33 @@ impl SecureBootCfg {
 impl SecureBootCfg {
     pub fn set_dice(&mut self, use_dice: bool) {
         if use_dice {
-            self.skip_dice = EnableDiceStatus::EnableDice.into();
+            self.skip_dice = EnableDiceStatus::EnableDice;
         } else {
-            self.skip_dice = EnableDiceStatus::DisableDice1.into();
+            self.skip_dice = EnableDiceStatus::DisableDice1;
         }
     }
 
     pub fn set_dice_inc_nxp_cfg(&mut self, use_nxp_cfg: bool) {
         if use_nxp_cfg {
-            self.dice_inc_nxp_cfg = DiceNXPIncStatus::Included1.into();
+            self.dice_inc_nxp_cfg = DiceNXPIncStatus::Included1;
         }
     }
 
     pub fn set_dice_inc_cust_cfg(&mut self, use_cust_cfg: bool) {
         if use_cust_cfg {
-            self.dice_cust_cfg = DiceCustIncStatus::Included1.into();
+            self.dice_cust_cfg = DiceCustIncStatus::Included1;
         }
     }
 
     pub fn set_dice_inc_sec_epoch(&mut self, inc_sec_epoch: bool) {
         if inc_sec_epoch {
-            self.dice_inc_sec_epoch = DiceIncSecEpoch::Included1.into();
+            self.dice_inc_sec_epoch = DiceIncSecEpoch::Included1;
         }
     }
 
     pub fn set_sec_boot(&mut self, sec_boot: bool) {
         if sec_boot {
-            self.sec_boot_en = SecBootStatus::SignedImage3.into();
+            self.sec_boot_en = SecBootStatus::SignedImage3;
         }
     }
 }
@@ -498,6 +513,14 @@ impl CMPAPage {
         Ok(())
     }
 
+    pub fn get_cc_socu_pin(&self) -> Result<CCSOCUPin> {
+        Ok(CCSOCUPin(self.cc_socu_pin))
+    }
+
+    pub fn get_cc_socu_dflt(&self) -> Result<CCSOCUDflt> {
+        Ok(CCSOCUDflt(self.cc_socu_dflt))
+    }
+
     // We're very deliberate about using from_be_bytes here despite
     // the fact that this is technically going to be an le integer.
     // packed_struct does not handle endian byte swapping for structres
@@ -512,10 +535,18 @@ impl CMPAPage {
         Ok(())
     }
 
+    pub fn get_secure_boot_cfg(&self) -> Result<SecureBootCfg> {
+        Ok(SecureBootCfg::unpack(&self.secure_boot_cfg.to_be_bytes())?)
+    }
+
     pub fn set_boot_cfg(&mut self, default_isp: DefaultIsp, boot_speed: BootSpeed) -> Result<()> {
         let cfg = BootCfg::new(default_isp, boot_speed);
         self.boot_cfg = u32::from_be_bytes(cfg.pack()?);
         Ok(())
+    }
+
+    pub fn get_boot_cfg(&self) -> Result<BootCfg> {
+        Ok(BootCfg::unpack(&self.boot_cfg.to_be_bytes())?)
     }
 
     pub fn set_rotkh(&mut self, rotkh: &[u8; 32]) {
@@ -576,7 +607,7 @@ impl CertHeader {
     }
 }
 
-#[derive(PrimitiveEnum, Copy, Clone, Debug, Deserialize)]
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum ROTKeyStatus {
     Invalid = 0x0,
@@ -600,16 +631,16 @@ impl ROTKeyStatus {
 #[packed_struct(size_bytes = "4", endian = "lsb", bit_numbering = "lsb0")]
 pub struct RKTHRevoke {
     #[packed_field(ty = "enum", bits = "1..=0")]
-    pub rotk0: EnumCatchAll<ROTKeyStatus>,
+    pub rotk0: ROTKeyStatus,
 
     #[packed_field(ty = "enum", bits = "3..=2")]
-    pub rotk1: EnumCatchAll<ROTKeyStatus>,
+    pub rotk1: ROTKeyStatus,
 
     #[packed_field(ty = "enum", bits = "5..=4")]
-    pub rotk2: EnumCatchAll<ROTKeyStatus>,
+    pub rotk2: ROTKeyStatus,
 
     #[packed_field(ty = "enum", bits = "7..=6")]
-    pub rotk3: EnumCatchAll<ROTKeyStatus>,
+    pub rotk3: ROTKeyStatus,
 
     #[packed_field(bits = "31..=8")]
     _reserved: ReservedZero<packed_bits::Bits<24>>,
@@ -618,47 +649,47 @@ pub struct RKTHRevoke {
 impl RKTHRevoke {
     pub fn new() -> RKTHRevoke {
         RKTHRevoke {
-            rotk0: ROTKeyStatus::Invalid.into(),
-            rotk1: ROTKeyStatus::Invalid.into(),
-            rotk2: ROTKeyStatus::Invalid.into(),
-            rotk3: ROTKeyStatus::Invalid.into(),
+            rotk0: ROTKeyStatus::Invalid,
+            rotk1: ROTKeyStatus::Invalid,
+            rotk2: ROTKeyStatus::Invalid,
+            rotk3: ROTKeyStatus::Invalid,
             _reserved: ReservedZero::<packed_bits::Bits<24>>::default(),
         }
     }
 
     pub fn enable_keys(&mut self, key0: bool, key1: bool, key2: bool, key3: bool) {
         if key0 {
-            self.rotk0 = ROTKeyStatus::Enabled.into();
+            self.rotk0 = ROTKeyStatus::Enabled;
         }
 
         if key1 {
-            self.rotk1 = ROTKeyStatus::Enabled.into();
+            self.rotk1 = ROTKeyStatus::Enabled;
         }
 
         if key2 {
-            self.rotk2 = ROTKeyStatus::Enabled.into();
+            self.rotk2 = ROTKeyStatus::Enabled;
         }
 
         if key3 {
-            self.rotk3 = ROTKeyStatus::Enabled.into();
+            self.rotk3 = ROTKeyStatus::Enabled;
         }
     }
 
     pub fn revoke_keys(&mut self, key0: bool, key1: bool, key2: bool, key3: bool) {
         if key0 {
-            self.rotk0 = ROTKeyStatus::Revoked2.into();
+            self.rotk0 = ROTKeyStatus::Revoked2;
         }
 
         if key1 {
-            self.rotk1 = ROTKeyStatus::Revoked2.into();
+            self.rotk1 = ROTKeyStatus::Revoked2;
         }
 
         if key2 {
-            self.rotk2 = ROTKeyStatus::Revoked2.into();
+            self.rotk2 = ROTKeyStatus::Revoked2;
         }
 
         if key3 {
-            self.rotk3 = ROTKeyStatus::Revoked2.into();
+            self.rotk3 = ROTKeyStatus::Revoked2;
         }
     }
 }
@@ -722,7 +753,7 @@ pub struct CFPAPage {
     pub cmpa_prog_in_progress: u32,
 
     // prince security codes. These are split up to get around rust's
-    // limitation of 256 byte arrays
+    // limitation of not deriving Default for >256 byte arrays
     pub prince_region0_code0: [u8; 0x20],
     pub prince_region0_code1: [u8; 0x18],
     pub prince_region1_code0: [u8; 0x20],
@@ -767,6 +798,10 @@ impl CFPAPage {
         self.rkth_revoke = u32::from_be_bytes(rkth.pack()?);
 
         Ok(())
+    }
+
+    pub fn get_rkth_revoke(&self) -> Result<RKTHRevoke> {
+        Ok(RKTHRevoke::unpack(&self.rkth_revoke.to_be_bytes())?)
     }
 
     pub fn to_vec(&mut self) -> Result<Vec<u8>> {

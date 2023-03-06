@@ -94,7 +94,7 @@ FLAGS:
 SUBCOMMANDS:
     crc             Generate a non-secure CRC image
     help            Prints this message or the help of the given subcommand(s)
-    signed-image    Generate a secure saigned image and corresponding CMPA region
+    signed-image    Generate a secure signed image and corresponding CMPA region
 ```
 
 ### Generating a crc image

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use byteorder::{ByteOrder, WriteBytesExt};
 use lpc55_areas::*;
 use rsa::{
@@ -79,7 +79,10 @@ pub fn sign_chain(
         .cert_paths
         .iter()
         .flat_map(|path| {
-            let cert_bytes = std::fs::read(prefix.join(&path)).unwrap();
+            let full_path = prefix.join(path);
+            let cert_bytes = std::fs::read(&full_path)
+                .with_context(|| format!("could not load cert at {full_path:?}"))
+                .unwrap();
             let cert_pad = get_pad(cert_bytes.len());
             let padded_len = cert_bytes.len() + cert_pad;
             let mut v = Vec::new();
@@ -180,7 +183,7 @@ pub fn sign_chain(
     for _ in 0..(4 - root_cnt) {
         let empty_hash: [u8; 32] = [0; 32];
         out.write_all(&empty_hash)?;
-        rkth_sha.update(&empty_hash);
+        rkth_sha.update(empty_hash);
     }
 
     drop(out);
@@ -197,9 +200,7 @@ pub fn sign_chain(
         .or_else(|_| rsa::RsaPrivateKey::read_pkcs8_pem_file(prefix.join(priv_key_path)))?;
 
     let sig = priv_key.sign(
-        rsa::padding::PaddingScheme::PKCS1v15Sign {
-            hash: Some(rsa::hash::Hash::SHA2_256),
-        },
+        rsa::pkcs1v15::Pkcs1v15Sign::new::<rsa::sha2::Sha256>(),
         img_hash.finalize().as_slice(),
     )?;
 
@@ -210,7 +211,7 @@ pub fn sign_chain(
         .append(true)
         .open(outfile_path)?;
 
-    out.write_all(&sig)?;
+    out.write_all(sig.as_ref())?;
     drop(out);
 
     // TODO check the signature with the public key
@@ -318,10 +319,10 @@ pub fn sign_image(
 
     // The sha256 of all the root keys gets put in in the CMPA area
     let mut rkth_sha = sha2::Sha256::new();
-    rkth_sha.update(&root0_sha);
-    rkth_sha.update(&empty_hash);
-    rkth_sha.update(&empty_hash);
-    rkth_sha.update(&empty_hash);
+    rkth_sha.update(root0_sha);
+    rkth_sha.update(empty_hash);
+    rkth_sha.update(empty_hash);
+    rkth_sha.update(empty_hash);
 
     let rkth = rkth_sha.finalize();
 
@@ -335,9 +336,7 @@ pub fn sign_image(
     img_hash.update(&sign_bytes);
 
     let sig = priv_key.sign(
-        rsa::padding::PaddingScheme::PKCS1v15Sign {
-            hash: Some(rsa::hash::Hash::SHA2_256),
-        },
+        rsa::pkcs1v15::Pkcs1v15Sign::new::<rsa::sha2::Sha256>(),
         img_hash.finalize().as_slice(),
     )?;
 
@@ -348,7 +347,7 @@ pub fn sign_image(
         .append(true)
         .open(outfile_path)?;
 
-    out.write_all(&sig)?;
+    out.write_all(sig.as_ref())?;
     drop(out);
 
     Ok(rkth.as_slice().try_into().expect("something went wrong?"))
