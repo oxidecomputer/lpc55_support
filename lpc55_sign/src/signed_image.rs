@@ -38,11 +38,7 @@ pub fn stamp_image(
     if root_certs.len() != 4 {
         return Err(anyhow!("Need exactly four root certificates"));
     }
-    if root_certs
-        .iter()
-        .find(|&cert| cert == &signing_certs[0])
-        .is_none()
-    {
+    if root_certs.iter().all(|root| root != &signing_certs[0]) {
         return Err(anyhow!("Root signing certificate must appear in root list"));
     }
 
