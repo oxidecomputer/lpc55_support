@@ -27,30 +27,29 @@ fn get_pad(val: usize) -> usize {
 /// append the root-key-hash table. Returns the stamped image
 /// and the root-key-table hash.
 pub fn stamp_image(
-    binary: &[u8],
-    signing_certs: &[&[u8]],
-    root_certs: &[&[u8]; 4],
+    mut image_bytes: Vec<u8>,
+    signing_certs: Vec<Vec<u8>>,
+    root_certs: Vec<Vec<u8>>,
     execution_address: u32,
 ) -> Result<(Vec<u8>, [u8; 32])> {
     if signing_certs.len() < 1 {
         return Err(anyhow!("Need at least a root certificate"));
     }
+    if root_certs.len() != 4 {
+        return Err(anyhow!("Need exactly four root certificates"));
+    }
     if root_certs
         .iter()
-        .find(|&&cert| cert == signing_certs[0])
+        .find(|&cert| cert == &signing_certs[0])
         .is_none()
     {
         return Err(anyhow!("Root signing certificate must appear in root list"));
     }
 
-    let mut image_bytes = binary.to_owned();
-    let image_len = image_bytes.len();
-    let image_pad = get_pad(image_len);
-
     // Generate the certificate table, including the padded length
     // of each certificate.
     let mut cert_table = Vec::new();
-    for cert in signing_certs {
+    for cert in &signing_certs {
         let cert_pad = get_pad(cert.len());
         let padded_len = cert.len() + cert_pad;
         cert_table.extend_from_slice(&(padded_len as u32).to_le_bytes());
@@ -66,6 +65,8 @@ pub fn stamp_image(
     let cert_table_len = cert_header.certificate_table_len as usize;
 
     // How many bytes we sign, including image, cert table, and root key hashes.
+    let image_len = image_bytes.len();
+    let image_pad = get_pad(image_len);
     let signed_len = image_len + image_pad + cert_header_len + cert_table_len + 4 * 32;
     cert_header.total_image_len = signed_len.try_into()?;
 
@@ -101,7 +102,7 @@ pub fn stamp_image(
         let root_key_hash: [u8; 32] = if root.is_empty() {
             [0; 32]
         } else {
-            let (_, root_cert) = parse_x509_certificate(root)?;
+            let (_, root_cert) = parse_x509_certificate(&root)?;
             let root_key = root_cert.public_key().subject_public_key.as_ref();
             let root_key = RsaPublicKey::from_pkcs1_der(root_key)?;
             let mut hash = Sha256::new();

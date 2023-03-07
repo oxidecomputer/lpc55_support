@@ -165,11 +165,11 @@ fn main() -> Result<()> {
             let signing_certs = read_certs(&cfg.signing_certs)?;
             let root_certs = read_certs(&cfg.root_certs)?;
             write_signed_image(
-                &image_args,
-                &dice_args,
-                &signing_certs.iter().map(Vec::as_slice).collect::<Vec<_>>(),
-                &root_certs.iter().map(Vec::as_slice).collect::<Vec<_>>(),
-                &cfg.private_key,
+                image_args,
+                dice_args,
+                signing_certs,
+                root_certs,
+                cfg.private_key,
             )?;
         }
         Command::SignedImage {
@@ -179,9 +179,9 @@ fn main() -> Result<()> {
             root_cert,
         } => {
             let root_cert = std::fs::read(root_cert)?;
-            let signing = [&root_cert[..]];
-            let roots = [&root_cert[..], &[], &[], &[]];
-            write_signed_image(&image_args, &dice_args, &signing, &roots, &private_key)?;
+            let signing = vec![root_cert.clone()];
+            let roots = vec![root_cert, vec![], vec![], vec![]];
+            write_signed_image(image_args, dice_args, signing, roots, private_key)?;
         }
         Command::EccImage {
             src_bin,
@@ -535,15 +535,14 @@ fn write_to_file(path: &PathBuf, bytes: &[u8]) -> Result<()> {
 }
 
 fn write_signed_image(
-    image: &ImageArgs,
-    dice: &DiceArgs,
-    signing_certs: &[&[u8]],
-    root_certs: &[&[u8]],
-    private_key: &PathBuf,
+    image: ImageArgs,
+    dice: DiceArgs,
+    signing_certs: Vec<Vec<u8>>,
+    root_certs: Vec<Vec<u8>>,
+    private_key: PathBuf,
 ) -> Result<()> {
     let bin = std::fs::read(&image.src_bin)?;
-    let (stamped, rkth) =
-        signed_image::stamp_image(&bin, signing_certs, root_certs.try_into()?, image.address)?;
+    let (stamped, rkth) = signed_image::stamp_image(bin, signing_certs, root_certs, image.address)?;
 
     let private_key = std::fs::read_to_string(private_key)?;
     let signed = signed_image::sign_image(&stamped, &private_key)?;
