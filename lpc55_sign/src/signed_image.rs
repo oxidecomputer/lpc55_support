@@ -4,7 +4,7 @@
 
 use std::convert::TryInto;
 
-use anyhow::{anyhow, Result};
+use anyhow::{bail, Result};
 use byteorder::{ByteOrder, LittleEndian};
 use lpc55_areas::*;
 use packed_struct::prelude::*;
@@ -33,13 +33,13 @@ pub fn stamp_image(
     execution_address: u32,
 ) -> Result<(Vec<u8>, [u8; 32])> {
     if signing_certs.len() < 1 {
-        return Err(anyhow!("Need at least a root certificate"));
+        bail!("Need at least a root certificate");
     }
     if root_certs.len() != 4 {
-        return Err(anyhow!("Need exactly four root certificates"));
+        bail!("Need exactly four root certificates");
     }
     if root_certs.iter().all(|root| root != &signing_certs[0]) {
-        return Err(anyhow!("Root signing certificate must appear in root list"));
+        bail!("Root signing certificate must appear in root list");
     }
 
     // Generate the certificate table, including the padded length
