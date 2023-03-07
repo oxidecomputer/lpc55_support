@@ -14,8 +14,7 @@ use packed_struct::{EnumCatchAll, PackedStruct};
 use rsa::{pkcs1::DecodeRsaPublicKey, signature::Verifier, PublicKeyParts};
 use serde::Deserialize;
 use sha2::Digest;
-use std::fs::OpenOptions;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -525,15 +524,6 @@ fn read_certs(paths: &[PathBuf]) -> Result<Vec<Vec<u8>>> {
         .collect::<Result<Vec<Vec<u8>>, _>>()?)
 }
 
-fn write_to_file(path: &PathBuf, bytes: &[u8]) -> Result<()> {
-    Ok(OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(&path)?
-        .write_all(&bytes)?)
-}
-
 fn write_signed_image(
     image: ImageArgs,
     dice: DiceArgs,
@@ -554,8 +544,8 @@ fn write_signed_image(
         dice.with_dice_inc_sec_epoch,
         &rkth,
     )?;
-    write_to_file(&image.dest_bin, &signed)?;
-    write_to_file(&image.dest_cmpa, &cmpa)?;
+    std::fs::write(&image.dest_bin, &signed)?;
+    std::fs::write(&image.dest_cmpa, &cmpa)?;
     println!(
         "Done! Signed image written to {}, CMPA to {}",
         &image.dest_bin.display(),
@@ -576,7 +566,7 @@ fn write_signed_image(
         let cfpa_settings = DebugSettings::new();
         cfpa.set_debug_fields(cfpa_settings)?;
 
-        write_to_file(&cfpa_path, &cfpa.to_vec()?)?;
+        std::fs::write(&cfpa_path, &cfpa.to_vec()?)?;
         println!("CFPA written to {}", cfpa_path.display());
     }
 
