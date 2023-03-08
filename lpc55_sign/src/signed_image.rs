@@ -31,7 +31,7 @@ pub fn stamp_image(
     signing_certs: Vec<Vec<u8>>,
     root_certs: Vec<Vec<u8>>,
     execution_address: u32,
-) -> Result<(Vec<u8>, [u8; 32])> {
+) -> Result<Vec<u8>> {
     if signing_certs.len() < 1 {
         bail!("Need at least a root certificate");
     }
@@ -93,23 +93,10 @@ pub fn stamp_image(
     // The hash of each root public key (i.e., of its raw `n` and `e` values)
     // goes into the image and _must_ match the hash-of-hashes programmed in
     // the CMPA!
-    let mut rkth = Sha256::new();
     for root in root_certs {
-        let root_key_hash: [u8; 32] = if root.is_empty() {
-            [0; 32]
-        } else {
-            let (_, root_cert) = parse_x509_certificate(&root)?;
-            let root_key = root_cert.public_key().subject_public_key.as_ref();
-            let root_key = RsaPublicKey::from_pkcs1_der(root_key)?;
-            let mut hash = Sha256::new();
-            hash.update(&root_key.n().to_bytes_be());
-            hash.update(&root_key.e().to_bytes_be());
-            hash.finalize().as_slice().try_into()?
-        };
-        image_bytes.extend_from_slice(&root_key_hash);
-        rkth.update(&root_key_hash);
+        image_bytes.extend_from_slice(&root_key_hash(root)?);
     }
-    Ok((image_bytes, rkth.finalize().as_slice().try_into()?))
+    Ok(image_bytes)
 }
 
 /// Decode the private key, sign the stamped image with it,
@@ -130,25 +117,24 @@ pub fn sign_image(binary: &[u8], private_key: &str) -> Result<Vec<u8>> {
     Ok(signed)
 }
 
-pub fn create_cmpa(
-    with_dice: bool,
-    with_dice_inc_nxp_cfg: bool,
-    with_dice_cust_cfg: bool,
-    with_dice_inc_sec_epoch: bool,
-    rkth: &[u8; 32],
-) -> Result<Vec<u8>> {
-    let mut secure_boot_cfg = SecureBootCfg::new();
-    secure_boot_cfg.set_dice(with_dice);
-    secure_boot_cfg.set_dice_inc_nxp_cfg(with_dice_inc_nxp_cfg);
-    secure_boot_cfg.set_dice_inc_cust_cfg(with_dice_cust_cfg);
-    secure_boot_cfg.set_dice_inc_sec_epoch(with_dice_inc_sec_epoch);
-    secure_boot_cfg.set_sec_boot(true);
+pub fn root_key_hash(root: Vec<u8>) -> Result<[u8; 32]> {
+    if root.is_empty() {
+        Ok([0; 32])
+    } else {
+        let (_, root_cert) = parse_x509_certificate(&root)?;
+        let root_key = root_cert.public_key().subject_public_key.as_ref();
+        let root_key = RsaPublicKey::from_pkcs1_der(root_key)?;
+        let mut hash = Sha256::new();
+        hash.update(&root_key.n().to_bytes_be());
+        hash.update(&root_key.e().to_bytes_be());
+        Ok(hash.finalize().as_slice().try_into()?)
+    }
+}
 
-    let mut cmpa = CMPAPage::new();
-    cmpa.set_secure_boot_cfg(secure_boot_cfg)?;
-    cmpa.set_rotkh(rkth);
-    cmpa.set_debug_fields(DebugSettings::new())?;
-    cmpa.set_boot_cfg(DefaultIsp::Auto, BootSpeed::Fro96mhz)?;
-
-    Ok(cmpa.pack()?.try_into()?)
+pub fn root_key_table_hash(root_certs: Vec<Vec<u8>>) -> Result<[u8; 32]> {
+    let mut rkth = Sha256::new();
+    for root in root_certs {
+        rkth.update(&root_key_hash(root)?);
+    }
+    Ok(rkth.finalize().as_slice().try_into()?)
 }

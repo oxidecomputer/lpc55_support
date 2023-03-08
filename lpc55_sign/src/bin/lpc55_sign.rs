@@ -6,8 +6,9 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 use colored::Colorize;
 use lpc55_areas::{
-    BootField, BootImageType, CFPAPage, CMPAPage, CertHeader, DebugSettings, RKTHRevoke,
-    ROTKeyStatus, SecBootStatus, TZMImageStatus, TzmImageType, TzmPreset,
+    BootField, BootImageType, BootSpeed, CFPAPage, CMPAPage, CertHeader, DebugSettings, DefaultIsp,
+    RKTHRevoke, ROTKeyStatus, SecBootStatus, SecureBootCfg, TZMImageStatus, TzmImageType,
+    TzmPreset,
 };
 use lpc55_sign::{crc_image, sign_ecc, signed_image};
 use packed_struct::{EnumCatchAll, PackedStruct};
@@ -19,19 +20,19 @@ use std::path::PathBuf;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct CertConfig {
+struct CertConfig {
     /// The file containing the private key with which to sign the image.
-    pub private_key: PathBuf,
+    private_key: PathBuf,
 
     /// The chain of signing certificates, in root-to-leaf order.
     /// The image will be signed with the private key corresponding
     /// to the leaf (last) certificate.
-    pub signing_certs: Vec<PathBuf>,
+    signing_certs: Vec<PathBuf>,
 
     /// The full set of (up to four) root certificates, from which the root
     /// key hashes are derived. Must contain the root (first) certificate
     /// in `signing_certs`.
-    pub root_certs: Vec<PathBuf>,
+    root_certs: Vec<PathBuf>,
 }
 
 #[derive(Debug, Parser)]
@@ -52,12 +53,12 @@ struct ImageArgs {
     src_bin: PathBuf,
     #[clap(parse(from_os_str))]
     dest_bin: PathBuf,
-    #[clap(parse(from_os_str))]
-    dest_cmpa: PathBuf,
     #[clap(long, parse(try_from_str = parse_int::parse), default_value = "0")]
     address: u32,
-    #[clap(long)]
-    cfpa: Option<PathBuf>,
+    #[clap(long = "cmpa")]
+    dest_cmpa: Option<PathBuf>,
+    #[clap(long = "cfpa")]
+    dest_cfpa: Option<PathBuf>,
 }
 
 #[derive(Debug, Parser)]
@@ -152,35 +153,77 @@ fn main() -> Result<()> {
             address,
         } => {
             crc_image::update_crc(&src_bin, &dest_bin, address)?;
-            println!("Done! CRC image written to {:?}", &dest_bin);
+            check!(OK, "CRC image written to {:?}", &dest_bin);
         }
         Command::ChainedImage {
             dice_args,
-            image_args,
+            image_args:
+                ImageArgs {
+                    address,
+                    src_bin,
+                    ref dest_bin,
+                    ref dest_cmpa,
+                    ref dest_cfpa,
+                },
             cert_cfg,
         } => {
             let cfg_contents = std::fs::read(&cert_cfg)?;
             let cfg: CertConfig = toml::from_slice(&cfg_contents)?;
+            let private_key = std::fs::read_to_string(&cfg.private_key)?;
             let signing_certs = read_certs(&cfg.signing_certs)?;
             let root_certs = read_certs(&cfg.root_certs)?;
-            write_signed_image(
-                image_args,
-                dice_args,
-                signing_certs,
-                root_certs,
-                cfg.private_key,
-            )?;
+
+            let image = std::fs::read(src_bin)?;
+            let stamped =
+                signed_image::stamp_image(image, signing_certs, root_certs.clone(), address)?;
+            let signed = signed_image::sign_image(&stamped, &private_key)?;
+            std::fs::write(dest_bin, signed)?;
+            check!(OK, "Signed image written to {}", dest_bin.display());
+
+            if let Some(dest_cmpa) = dest_cmpa {
+                let rotkh = signed_image::root_key_table_hash(root_certs.clone())?;
+                std::fs::write(dest_cmpa, generate_cmpa(dice_args, rotkh)?.to_vec()?)?;
+                println!("CMPA written to {}", dest_cmpa.display());
+            }
+            if let Some(dest_cfpa) = dest_cfpa {
+                std::fs::write(dest_cfpa, generate_cfpa(root_certs)?.to_vec()?)?;
+                println!("CFPA written to {}", dest_cfpa.display());
+            }
         }
         Command::SignedImage {
             dice_args,
-            image_args,
+            image_args:
+                ImageArgs {
+                    address,
+                    src_bin,
+                    ref dest_bin,
+                    ref dest_cmpa,
+                    ref dest_cfpa,
+                },
             private_key,
             root_cert,
         } => {
+            let private_key = std::fs::read_to_string(private_key)?;
             let root_cert = std::fs::read(root_cert)?;
-            let signing = vec![root_cert.clone()];
-            let roots = vec![root_cert, vec![], vec![], vec![]];
-            write_signed_image(image_args, dice_args, signing, roots, private_key)?;
+            let signing_certs = vec![root_cert.clone()];
+            let root_certs = vec![root_cert, vec![], vec![], vec![]];
+
+            let image = std::fs::read(src_bin)?;
+            let stamped =
+                signed_image::stamp_image(image, signing_certs, root_certs.clone(), address)?;
+            let signed = signed_image::sign_image(&stamped, &private_key)?;
+            std::fs::write(dest_bin, signed)?;
+            check!(OK, "Signed image written to {}", dest_bin.display());
+
+            if let Some(dest_cmpa) = dest_cmpa {
+                let rotkh = signed_image::root_key_table_hash(root_certs.clone())?;
+                std::fs::write(dest_cmpa, generate_cmpa(dice_args, rotkh)?.to_vec()?)?;
+                check!(OK, "CMPA written to {}", dest_cmpa.display());
+            }
+            if let Some(dest_cfpa) = dest_cfpa {
+                std::fs::write(dest_cfpa, generate_cfpa(root_certs)?.to_vec()?)?;
+                check!(OK, "CFPA written to {}", dest_cfpa.display());
+            }
         }
         Command::EccImage {
             src_bin,
@@ -189,7 +232,7 @@ fn main() -> Result<()> {
             address,
         } => {
             sign_ecc::ecc_sign_image(&src_bin, &priv_key, &dest_bin, address)?;
-            println!("Done! ECC image written to {:?}", &dest_bin);
+            check!(OK, "ECC image written to {:?}", &dest_bin);
         }
         Command::VerifySignedImage {
             src_cmpa,
@@ -524,51 +567,36 @@ fn read_certs(paths: &[PathBuf]) -> Result<Vec<Vec<u8>>> {
         .collect::<Result<Vec<Vec<u8>>, _>>()?)
 }
 
-fn write_signed_image(
-    image: ImageArgs,
-    dice: DiceArgs,
-    signing_certs: Vec<Vec<u8>>,
-    root_certs: Vec<Vec<u8>>,
-    private_key: PathBuf,
-) -> Result<()> {
-    let bin = std::fs::read(&image.src_bin)?;
-    let (stamped, rkth) = signed_image::stamp_image(bin, signing_certs, root_certs, image.address)?;
+fn generate_cmpa(dice: DiceArgs, rotkh: [u8; 32]) -> Result<CMPAPage> {
+    let mut secure_boot_cfg = SecureBootCfg::new();
+    secure_boot_cfg.set_dice(dice.with_dice);
+    secure_boot_cfg.set_dice_inc_nxp_cfg(dice.with_dice_inc_nxp_cfg);
+    secure_boot_cfg.set_dice_inc_cust_cfg(dice.with_dice_cust_cfg);
+    secure_boot_cfg.set_dice_inc_sec_epoch(dice.with_dice_inc_sec_epoch);
+    secure_boot_cfg.set_sec_boot(true);
 
-    let private_key = std::fs::read_to_string(private_key)?;
-    let signed = signed_image::sign_image(&stamped, &private_key)?;
+    let mut cmpa = CMPAPage::new();
+    cmpa.set_secure_boot_cfg(secure_boot_cfg)?;
+    cmpa.set_rotkh(&rotkh);
+    cmpa.set_debug_fields(DebugSettings::new())?;
+    cmpa.set_boot_cfg(DefaultIsp::Auto, BootSpeed::Fro96mhz)?;
+    Ok(cmpa)
+}
 
-    let cmpa = signed_image::create_cmpa(
-        dice.with_dice,
-        dice.with_dice_inc_nxp_cfg,
-        dice.with_dice_cust_cfg,
-        dice.with_dice_inc_sec_epoch,
-        &rkth,
-    )?;
-    std::fs::write(&image.dest_bin, &signed)?;
-    std::fs::write(&image.dest_cmpa, &cmpa)?;
-    println!(
-        "Done! Signed image written to {}, CMPA to {}",
-        &image.dest_bin.display(),
-        &image.dest_cmpa.display()
-    );
+fn generate_cfpa(_root_certs: Vec<Vec<u8>>) -> Result<CFPAPage> {
+    let mut cfpa = CFPAPage::default();
+    cfpa.version += 1; // allow overwrite of default 0
 
-    if let Some(cfpa_path) = &image.cfpa {
-        let mut cfpa = CFPAPage::default();
-        cfpa.version += 1; // allow overwrite of default 0
+    // TODO: derive these bits from root_certs
+    let mut rkth = RKTHRevoke::new();
+    rkth.rotk0 = ROTKeyStatus::enabled().into();
+    rkth.rotk1 = ROTKeyStatus::invalid().into();
+    rkth.rotk2 = ROTKeyStatus::invalid().into();
+    rkth.rotk3 = ROTKeyStatus::invalid().into();
+    cfpa.update_rkth_revoke(rkth)?;
 
-        let mut rkth = RKTHRevoke::new();
-        rkth.rotk0 = ROTKeyStatus::enabled().into();
-        rkth.rotk1 = ROTKeyStatus::invalid().into();
-        rkth.rotk2 = ROTKeyStatus::invalid().into();
-        rkth.rotk3 = ROTKeyStatus::invalid().into();
+    let cfpa_settings = DebugSettings::new();
+    cfpa.set_debug_fields(cfpa_settings)?;
 
-        cfpa.update_rkth_revoke(rkth)?;
-        let cfpa_settings = DebugSettings::new();
-        cfpa.set_debug_fields(cfpa_settings)?;
-
-        std::fs::write(&cfpa_path, &cfpa.to_vec()?)?;
-        println!("CFPA written to {}", cfpa_path.display());
-    }
-
-    Ok(())
+    Ok(cfpa)
 }
