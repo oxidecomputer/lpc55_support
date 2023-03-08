@@ -24,14 +24,14 @@ struct CertConfig {
     /// The file containing the private key with which to sign the image.
     private_key: PathBuf,
 
-    /// The chain of signing certificates, in root-to-leaf order.
-    /// The image will be signed with the private key corresponding
-    /// to the leaf (last) certificate.
+    /// The chain of DER-encoded signing certificate files, in root-to-leaf
+    /// order. The image will be signed with the private key corresponding
+    /// to the the leaf (last) certificate.
     signing_certs: Vec<PathBuf>,
 
-    /// The full set of (up to four) root certificates, from which the root
-    /// key hashes are derived. Must contain the root (first) certificate
-    /// in `signing_certs`.
+    /// The full set of (up to four) DER-encoded root certificate files,
+    /// from which the root key hashes are derived. Must contain the root
+    /// (first) certificate in `signing_certs`.
     root_certs: Vec<PathBuf>,
 }
 
@@ -171,7 +171,13 @@ fn main() -> Result<()> {
             let cfg: CertConfig = toml::from_slice(&cfg_contents)?;
             let private_key = std::fs::read_to_string(&cfg.private_key)?;
             let signing_certs = read_certs(&cfg.signing_certs)?;
-            let root_certs = read_certs(&cfg.root_certs)?;
+            let mut root_certs = read_certs(&cfg.root_certs)?;
+            if root_certs.len() < 4 {
+                let empty_roots = [vec![], vec![], vec![], vec![]];
+                root_certs.extend_from_slice(&empty_roots[..4 - root_certs.len()]);
+            } else if root_certs.len() > 4 {
+                bail!("Too many roots, max four");
+            }
 
             let image = std::fs::read(src_bin)?;
             let stamped =
