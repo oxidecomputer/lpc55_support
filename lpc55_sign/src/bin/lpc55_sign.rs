@@ -161,9 +161,9 @@ fn main() -> Result<()> {
                 ImageArgs {
                     address,
                     src_bin,
-                    ref dest_bin,
-                    ref dest_cmpa,
-                    ref dest_cfpa,
+                    dest_bin,
+                    dest_cmpa,
+                    dest_cfpa,
                 },
             cert_cfg,
         } => {
@@ -183,15 +183,15 @@ fn main() -> Result<()> {
             let stamped =
                 signed_image::stamp_image(image, signing_certs, root_certs.clone(), address)?;
             let signed = signed_image::sign_image(&stamped, &private_key)?;
-            std::fs::write(dest_bin, signed)?;
-            check!(OK, "Signed image written to {}", dest_bin.display());
+            std::fs::write(&dest_bin, signed)?;
+            check!(OK, "Signed image written to {}", &dest_bin.display());
 
-            if let Some(dest_cmpa) = dest_cmpa {
+            if let Some(dest_cmpa) = &dest_cmpa {
                 let rotkh = signed_image::root_key_table_hash(root_certs.clone())?;
                 std::fs::write(dest_cmpa, generate_cmpa(dice_args, rotkh)?.to_vec()?)?;
                 println!("CMPA written to {}", dest_cmpa.display());
             }
-            if let Some(dest_cfpa) = dest_cfpa {
+            if let Some(dest_cfpa) = &dest_cfpa {
                 std::fs::write(dest_cfpa, generate_cfpa(root_certs)?.to_vec()?)?;
                 println!("CFPA written to {}", dest_cfpa.display());
             }
@@ -202,9 +202,9 @@ fn main() -> Result<()> {
                 ImageArgs {
                     address,
                     src_bin,
-                    ref dest_bin,
-                    ref dest_cmpa,
-                    ref dest_cfpa,
+                    dest_bin,
+                    dest_cmpa,
+                    dest_cfpa,
                 },
             private_key,
             root_cert,
@@ -218,15 +218,15 @@ fn main() -> Result<()> {
             let stamped =
                 signed_image::stamp_image(image, signing_certs, root_certs.clone(), address)?;
             let signed = signed_image::sign_image(&stamped, &private_key)?;
-            std::fs::write(dest_bin, signed)?;
-            check!(OK, "Signed image written to {}", dest_bin.display());
+            std::fs::write(&dest_bin, signed)?;
+            check!(OK, "Signed image written to {}", &dest_bin.display());
 
-            if let Some(dest_cmpa) = dest_cmpa {
+            if let Some(dest_cmpa) = &dest_cmpa {
                 let rotkh = signed_image::root_key_table_hash(root_certs.clone())?;
                 std::fs::write(dest_cmpa, generate_cmpa(dice_args, rotkh)?.to_vec()?)?;
                 check!(OK, "CMPA written to {}", dest_cmpa.display());
             }
-            if let Some(dest_cfpa) = dest_cfpa {
+            if let Some(dest_cfpa) = &dest_cfpa {
                 std::fs::write(dest_cfpa, generate_cfpa(root_certs)?.to_vec()?)?;
                 check!(OK, "CFPA written to {}", dest_cfpa.display());
             }
