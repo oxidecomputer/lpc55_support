@@ -66,9 +66,13 @@ pub fn stamp_image(
     let signed_len = image_len + image_pad + cert_header_len + cert_table_len + 4 * 32;
     cert_header.total_image_len = signed_len.try_into()?;
 
-    // Start writing the image header.
-    // Total image length includes XXX bytes of signature.
-    let total_len = signed_len + 256; // TODO: 256 only correct for 2048-bit keys
+    // Total image length includes the length of the eventual signature.
+    let (_, leaf) = parse_x509_certificate(&signing_certs.last().unwrap())?;
+    let pub_key = RsaPublicKey::from_pkcs1_der(leaf.public_key().subject_public_key.as_ref())?;
+    let sig_len = pub_key.n().bits() / 8;
+    let total_len = signed_len + sig_len;
+
+    // Start writing the image header: first the total image length.
     LittleEndian::write_u32(&mut image_bytes[0x20..0x24], total_len as u32);
 
     // Next comes the boot field.
