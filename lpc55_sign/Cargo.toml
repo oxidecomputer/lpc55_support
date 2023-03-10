@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 packed_struct = "0.10.0"
 packed_struct_codegen = "0.10.0"
-clap = { version = "3.0.14", features = ["derive"] }
+clap = { version = "4.1.8", features = ["derive"] }
 anyhow = "1.0.32"
 byteorder = "1.3.4"
 ecdsa = { version = "0.16.0", default-features = false, features = ["pkcs8", "der"] }

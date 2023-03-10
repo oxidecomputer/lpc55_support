@@ -2,10 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use std::cmp::Ordering;
 use std::convert::TryInto;
 
 use anyhow::{bail, Result};
 use byteorder::{ByteOrder, LittleEndian};
+use clap::Parser;
 use lpc55_areas::*;
 use packed_struct::prelude::*;
 use rsa::{
@@ -15,10 +17,34 @@ use rsa::{
 use sha2::{Digest, Sha256};
 use x509_parser::parse_x509_certificate;
 
+#[derive(Clone, Debug, Parser)]
+pub struct DiceArgs {
+    #[clap(long)]
+    with_dice: bool,
+    #[clap(long)]
+    with_dice_inc_nxp_cfg: bool,
+    #[clap(long)]
+    with_dice_cust_cfg: bool,
+    #[clap(long)]
+    with_dice_inc_sec_epoch: bool,
+}
+
 fn get_pad(val: usize) -> usize {
     match val.checked_rem(4) {
         Some(s) if s > 0 => 4 - s,
         _ => 0,
+    }
+}
+
+fn pad_roots(mut roots: Vec<Vec<u8>>) -> Result<Vec<Vec<u8>>> {
+    match roots.len().cmp(&4) {
+        Ordering::Equal => Ok(roots),
+        Ordering::Less => {
+            let empty = [vec![], vec![], vec![], vec![]];
+            roots.extend_from_slice(&empty[..4 - roots.len()]);
+            Ok(roots)
+        }
+        Ordering::Greater => bail!("Too many roots, max four"),
     }
 }
 
@@ -33,13 +59,10 @@ pub fn stamp_image(
     execution_address: u32,
 ) -> Result<Vec<u8>> {
     if signing_certs.len() < 1 {
-        bail!("Need at least a root certificate");
+        bail!("Need at least one signing certificate");
     }
-    if root_certs.len() != 4 {
-        bail!("Need exactly four root certificates");
-    }
-    if root_certs.iter().all(|root| root != &signing_certs[0]) {
-        bail!("Root signing certificate must appear in root list");
+    if root_certs.len() < 1 {
+        bail!("Need at least one root certificate");
     }
 
     // Generate the certificate table, including the padded length
@@ -97,7 +120,7 @@ pub fn stamp_image(
     // The hash of each root public key (i.e., of its raw `n` and `e` values)
     // goes into the image and _must_ match the hash-of-hashes programmed in
     // the CMPA!
-    for root in root_certs {
+    for root in pad_roots(root_certs)? {
         image_bytes.extend_from_slice(&root_key_hash(root)?);
     }
     Ok(image_bytes)
@@ -137,8 +160,42 @@ pub fn root_key_hash(root: Vec<u8>) -> Result<[u8; 32]> {
 
 pub fn root_key_table_hash(root_certs: Vec<Vec<u8>>) -> Result<[u8; 32]> {
     let mut rkth = Sha256::new();
-    for root in root_certs {
+    for root in pad_roots(root_certs)? {
         rkth.update(&root_key_hash(root)?);
     }
     Ok(rkth.finalize().as_slice().try_into()?)
+}
+
+pub fn generate_cmpa(dice: DiceArgs, rotkh: [u8; 32]) -> Result<CMPAPage> {
+    let mut secure_boot_cfg = SecureBootCfg::new();
+    secure_boot_cfg.set_dice(dice.with_dice);
+    secure_boot_cfg.set_dice_inc_nxp_cfg(dice.with_dice_inc_nxp_cfg);
+    secure_boot_cfg.set_dice_inc_cust_cfg(dice.with_dice_cust_cfg);
+    secure_boot_cfg.set_dice_inc_sec_epoch(dice.with_dice_inc_sec_epoch);
+    secure_boot_cfg.set_sec_boot(true);
+
+    let mut cmpa = CMPAPage::new();
+    cmpa.set_secure_boot_cfg(secure_boot_cfg)?;
+    cmpa.set_rotkh(&rotkh);
+    cmpa.set_debug_fields(DebugSettings::new())?;
+    cmpa.set_boot_cfg(DefaultIsp::Auto, BootSpeed::Fro96mhz)?;
+    Ok(cmpa)
+}
+
+pub fn generate_cfpa(_root_certs: Vec<Vec<u8>>) -> Result<CFPAPage> {
+    let mut cfpa = CFPAPage::default();
+    cfpa.version += 1; // allow overwrite of default 0
+
+    // TODO: derive these bits from root_certs
+    let mut rkth = RKTHRevoke::new();
+    rkth.rotk0 = ROTKeyStatus::enabled().into();
+    rkth.rotk1 = ROTKeyStatus::invalid().into();
+    rkth.rotk2 = ROTKeyStatus::invalid().into();
+    rkth.rotk3 = ROTKeyStatus::invalid().into();
+    cfpa.update_rkth_revoke(rkth)?;
+
+    let cfpa_settings = DebugSettings::new();
+    cfpa.set_debug_fields(cfpa_settings)?;
+
+    Ok(cfpa)
 }

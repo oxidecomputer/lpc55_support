@@ -6,11 +6,13 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 use colored::Colorize;
 use lpc55_areas::{
-    BootField, BootImageType, BootSpeed, CFPAPage, CMPAPage, CertHeader, DebugSettings, DefaultIsp,
-    RKTHRevoke, ROTKeyStatus, SecBootStatus, SecureBootCfg, TZMImageStatus, TzmImageType,
-    TzmPreset,
+    BootField, BootImageType, CFPAPage, CMPAPage, CertHeader, ROTKeyStatus, SecBootStatus,
+    TZMImageStatus, TzmImageType, TzmPreset,
 };
-use lpc55_sign::{crc_image, sign_ecc, signed_image};
+use lpc55_sign::{
+    crc_image, sign_ecc,
+    signed_image::{self, DiceArgs},
+};
 use packed_struct::{EnumCatchAll, PackedStruct};
 use rsa::{pkcs1::DecodeRsaPublicKey, signature::Verifier, PublicKeyParts};
 use serde::Deserialize;
@@ -36,24 +38,10 @@ struct CertConfig {
 }
 
 #[derive(Debug, Parser)]
-struct DiceArgs {
-    #[clap(long)]
-    with_dice: bool,
-    #[clap(long)]
-    with_dice_inc_nxp_cfg: bool,
-    #[clap(long)]
-    with_dice_cust_cfg: bool,
-    #[clap(long)]
-    with_dice_inc_sec_epoch: bool,
-}
-
-#[derive(Debug, Parser)]
 struct ImageArgs {
-    #[clap(parse(from_os_str))]
     src_bin: PathBuf,
-    #[clap(parse(from_os_str))]
     dest_bin: PathBuf,
-    #[clap(long, parse(try_from_str = parse_int::parse), default_value = "0")]
+    #[clap(long, default_value_t = 0)]
     address: u32,
     #[clap(long = "cmpa")]
     dest_cmpa: Option<PathBuf>,
@@ -66,11 +54,9 @@ enum Command {
     /// Generate a non-secure CRC image
     #[clap(name = "crc")]
     Crc {
-        #[clap(parse(from_os_str))]
         src_bin: PathBuf,
-        #[clap(parse(from_os_str))]
         dest_bin: PathBuf,
-        #[clap(long, parse(try_from_str = parse_int::parse), default_value = "0")]
+        #[clap(long, default_value_t = 0)]
         address: u32,
     },
     ChainedImage {
@@ -78,7 +64,6 @@ enum Command {
         dice_args: DiceArgs,
         #[clap(flatten)]
         image_args: ImageArgs,
-        #[clap(parse(from_os_str))]
         cert_cfg: PathBuf,
     },
     /// Generate a secure signed image and corresponding CMPA region
@@ -88,33 +73,22 @@ enum Command {
         dice_args: DiceArgs,
         #[clap(flatten)]
         image_args: ImageArgs,
-        #[clap(parse(from_os_str))]
         private_key: PathBuf,
-        #[clap(parse(from_os_str))]
         root_cert: PathBuf,
     },
     #[clap(name = "ecc-image")]
     EccImage {
-        #[clap(parse(from_os_str))]
         src_bin: PathBuf,
-        #[clap(parse(from_os_str))]
         priv_key: PathBuf,
-        #[clap(parse(from_os_str))]
         dest_bin: PathBuf,
-        #[clap(long, parse(try_from_str = parse_int::parse), default_value = "0")]
+        #[clap(long, default_value_t = 0)]
         address: u32,
     },
     VerifySignedImage {
         #[clap(short, long)]
         verbose: bool,
-
-        #[clap(parse(from_os_str))]
         src_cmpa: PathBuf,
-
-        #[clap(parse(from_os_str))]
         src_cfpa: PathBuf,
-
-        #[clap(parse(from_os_str))]
         src_img: PathBuf,
     },
 }
@@ -188,11 +162,17 @@ fn main() -> Result<()> {
 
             if let Some(dest_cmpa) = &dest_cmpa {
                 let rotkh = signed_image::root_key_table_hash(root_certs.clone())?;
-                std::fs::write(dest_cmpa, generate_cmpa(dice_args, rotkh)?.to_vec()?)?;
+                std::fs::write(
+                    dest_cmpa,
+                    signed_image::generate_cmpa(dice_args, rotkh)?.to_vec()?,
+                )?;
                 println!("CMPA written to {}", dest_cmpa.display());
             }
             if let Some(dest_cfpa) = &dest_cfpa {
-                std::fs::write(dest_cfpa, generate_cfpa(root_certs)?.to_vec()?)?;
+                std::fs::write(
+                    dest_cfpa,
+                    signed_image::generate_cfpa(root_certs)?.to_vec()?,
+                )?;
                 println!("CFPA written to {}", dest_cfpa.display());
             }
         }
@@ -223,11 +203,17 @@ fn main() -> Result<()> {
 
             if let Some(dest_cmpa) = &dest_cmpa {
                 let rotkh = signed_image::root_key_table_hash(root_certs.clone())?;
-                std::fs::write(dest_cmpa, generate_cmpa(dice_args, rotkh)?.to_vec()?)?;
+                std::fs::write(
+                    dest_cmpa,
+                    signed_image::generate_cmpa(dice_args, rotkh)?.to_vec()?,
+                )?;
                 check!(OK, "CMPA written to {}", dest_cmpa.display());
             }
             if let Some(dest_cfpa) = &dest_cfpa {
-                std::fs::write(dest_cfpa, generate_cfpa(root_certs)?.to_vec()?)?;
+                std::fs::write(
+                    dest_cfpa,
+                    signed_image::generate_cfpa(root_certs)?.to_vec()?,
+                )?;
                 check!(OK, "CFPA written to {}", dest_cfpa.display());
             }
         }
@@ -571,38 +557,4 @@ fn read_certs(paths: &[PathBuf]) -> Result<Vec<Vec<u8>>> {
         .iter()
         .map(std::fs::read)
         .collect::<Result<Vec<Vec<u8>>, _>>()?)
-}
-
-fn generate_cmpa(dice: DiceArgs, rotkh: [u8; 32]) -> Result<CMPAPage> {
-    let mut secure_boot_cfg = SecureBootCfg::new();
-    secure_boot_cfg.set_dice(dice.with_dice);
-    secure_boot_cfg.set_dice_inc_nxp_cfg(dice.with_dice_inc_nxp_cfg);
-    secure_boot_cfg.set_dice_inc_cust_cfg(dice.with_dice_cust_cfg);
-    secure_boot_cfg.set_dice_inc_sec_epoch(dice.with_dice_inc_sec_epoch);
-    secure_boot_cfg.set_sec_boot(true);
-
-    let mut cmpa = CMPAPage::new();
-    cmpa.set_secure_boot_cfg(secure_boot_cfg)?;
-    cmpa.set_rotkh(&rotkh);
-    cmpa.set_debug_fields(DebugSettings::new())?;
-    cmpa.set_boot_cfg(DefaultIsp::Auto, BootSpeed::Fro96mhz)?;
-    Ok(cmpa)
-}
-
-fn generate_cfpa(_root_certs: Vec<Vec<u8>>) -> Result<CFPAPage> {
-    let mut cfpa = CFPAPage::default();
-    cfpa.version += 1; // allow overwrite of default 0
-
-    // TODO: derive these bits from root_certs
-    let mut rkth = RKTHRevoke::new();
-    rkth.rotk0 = ROTKeyStatus::enabled().into();
-    rkth.rotk1 = ROTKeyStatus::invalid().into();
-    rkth.rotk2 = ROTKeyStatus::invalid().into();
-    rkth.rotk3 = ROTKeyStatus::invalid().into();
-    cfpa.update_rkth_revoke(rkth)?;
-
-    let cfpa_settings = DebugSettings::new();
-    cfpa.set_debug_fields(cfpa_settings)?;
-
-    Ok(cfpa)
 }
