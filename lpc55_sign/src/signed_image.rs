@@ -2,7 +2,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::cmp::Ordering;
 use std::convert::TryInto;
 
 use anyhow::{bail, Result};
@@ -37,15 +36,11 @@ fn get_pad(val: usize) -> usize {
 }
 
 fn pad_roots(mut roots: Vec<Vec<u8>>) -> Result<Vec<Vec<u8>>> {
-    match roots.len().cmp(&4) {
-        Ordering::Equal => Ok(roots),
-        Ordering::Less => {
-            let empty = [vec![], vec![], vec![], vec![]];
-            roots.extend_from_slice(&empty[..4 - roots.len()]);
-            Ok(roots)
-        }
-        Ordering::Greater => bail!("Too many roots, max four"),
+    if roots.len() > 4 {
+        bail!("Too many roots, max four");
     }
+    roots.resize_with(4, Vec::new);
+    Ok(roots)
 }
 
 /// Prepare an image for signing: append a certificate table,
