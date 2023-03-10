@@ -68,9 +68,7 @@ pub fn stamp_image(
         let padded_len = cert.len() + cert_pad;
         cert_table.extend_from_slice(&(padded_len as u32).to_le_bytes());
         cert_table.extend_from_slice(cert);
-        if cert_pad > 0 {
-            cert_table.extend_from_slice(&vec![0; cert_pad]);
-        }
+        cert_table.resize(cert_table.len() + cert_pad, 0);
     }
     let cert_table_len = cert_table.len();
     let cert_header_len = CertHeader::packed_bytes_size(None)?;
@@ -106,9 +104,7 @@ pub fn stamp_image(
     }
 
     // Generate the image, see 7.3.4 of v2.4 UM 11126 for the layout.
-    if image_pad > 0 {
-        image_bytes.extend_from_slice(&vec![0; image_pad])
-    }
+    image_bytes.resize(image_bytes.len() + image_pad, 0);
     image_bytes.extend_from_slice(&cert_header.pack()?);
     image_bytes.extend_from_slice(&cert_table);
 
