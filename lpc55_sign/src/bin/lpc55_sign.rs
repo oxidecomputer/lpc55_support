@@ -166,14 +166,14 @@ fn main() -> Result<()> {
                     dest_cmpa,
                     signed_image::generate_cmpa(dice_args, rotkh)?.to_vec()?,
                 )?;
-                println!("CMPA written to {}", dest_cmpa.display());
+                check!(OK, "CMPA written to {}", dest_cmpa.display());
             }
             if let Some(dest_cfpa) = &dest_cfpa {
                 std::fs::write(
                     dest_cfpa,
                     signed_image::generate_cfpa(root_certs)?.to_vec()?,
                 )?;
-                println!("CFPA written to {}", dest_cfpa.display());
+                check!(OK, "CFPA written to {}", dest_cfpa.display());
             }
         }
         Command::SignedImage {
