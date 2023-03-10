@@ -144,16 +144,9 @@ fn main() -> Result<()> {
             let cfg_contents = std::fs::read(cert_cfg)?;
             let cfg: CertConfig = toml::from_slice(&cfg_contents)?;
             let private_key = std::fs::read_to_string(&cfg.private_key)?;
-            let signing_certs = read_certs(&cfg.signing_certs)?;
-            let mut root_certs = read_certs(&cfg.root_certs)?;
-            if root_certs.len() < 4 {
-                let empty_roots = [vec![], vec![], vec![], vec![]];
-                root_certs.extend_from_slice(&empty_roots[..4 - root_certs.len()]);
-            } else if root_certs.len() > 4 {
-                bail!("Too many roots, max four");
-            }
-
             let image = std::fs::read(src_bin)?;
+            let signing_certs = read_certs(&cfg.signing_certs)?;
+            let root_certs = read_certs(&cfg.root_certs)?;
             let stamped =
                 signed_image::stamp_image(image, signing_certs, root_certs.clone(), address)?;
             let signed = signed_image::sign_image(&stamped, &private_key)?;
