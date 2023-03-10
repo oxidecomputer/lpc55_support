@@ -141,7 +141,7 @@ fn main() -> Result<()> {
                 },
             cert_cfg,
         } => {
-            let cfg_contents = std::fs::read(&cert_cfg)?;
+            let cfg_contents = std::fs::read(cert_cfg)?;
             let cfg: CertConfig = toml::from_slice(&cfg_contents)?;
             let private_key = std::fs::read_to_string(&cfg.private_key)?;
             let signing_certs = read_certs(&cfg.signing_certs)?;

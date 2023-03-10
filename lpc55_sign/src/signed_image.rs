@@ -83,7 +83,7 @@ pub fn stamp_image(
     cert_header.total_image_len = signed_len.try_into()?;
 
     // Total image length includes the length of the eventual signature.
-    let (_, leaf) = parse_x509_certificate(&signing_certs.last().unwrap())?;
+    let (_, leaf) = parse_x509_certificate(signing_certs.last().unwrap())?;
     let pub_key = RsaPublicKey::from_pkcs1_der(leaf.public_key().subject_public_key.as_ref())?;
     let sig_len = pub_key.n().bits() / 8;
     let total_len = signed_len + sig_len;
@@ -152,7 +152,7 @@ pub fn root_key_hash(root: &[u8]) -> Result<[u8; 32]> {
 pub fn root_key_table_hash(root_certs: Vec<Vec<u8>>) -> Result<[u8; 32]> {
     let mut rkth = Sha256::new();
     for root in pad_roots(root_certs)? {
-        rkth.update(&root_key_hash(&root)?);
+        rkth.update(root_key_hash(&root)?);
     }
     Ok(rkth.finalize().as_slice().try_into()?)
 }
@@ -179,10 +179,10 @@ pub fn generate_cfpa(_root_certs: Vec<Vec<u8>>) -> Result<CFPAPage> {
 
     // TODO: derive these bits from root_certs
     let mut rkth = RKTHRevoke::new();
-    rkth.rotk0 = ROTKeyStatus::enabled().into();
-    rkth.rotk1 = ROTKeyStatus::invalid().into();
-    rkth.rotk2 = ROTKeyStatus::invalid().into();
-    rkth.rotk3 = ROTKeyStatus::invalid().into();
+    rkth.rotk0 = ROTKeyStatus::enabled();
+    rkth.rotk1 = ROTKeyStatus::invalid();
+    rkth.rotk2 = ROTKeyStatus::invalid();
+    rkth.rotk3 = ROTKeyStatus::invalid();
     cfpa.update_rkth_revoke(rkth)?;
 
     let cfpa_settings = DebugSettings::new();
