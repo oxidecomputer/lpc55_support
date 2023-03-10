@@ -121,7 +121,7 @@ pub fn stamp_image(
     // goes into the image and _must_ match the hash-of-hashes programmed in
     // the CMPA!
     for root in pad_roots(root_certs)? {
-        image_bytes.extend_from_slice(&root_key_hash(root)?);
+        image_bytes.extend_from_slice(&root_key_hash(&root)?);
     }
     Ok(image_bytes)
 }
@@ -144,11 +144,11 @@ pub fn sign_image(binary: &[u8], private_key: &str) -> Result<Vec<u8>> {
     Ok(signed)
 }
 
-pub fn root_key_hash(root: Vec<u8>) -> Result<[u8; 32]> {
+pub fn root_key_hash(root: &[u8]) -> Result<[u8; 32]> {
     if root.is_empty() {
         Ok([0; 32])
     } else {
-        let (_, root_cert) = parse_x509_certificate(&root)?;
+        let (_, root_cert) = parse_x509_certificate(root)?;
         let root_key = root_cert.public_key().subject_public_key.as_ref();
         let root_key = RsaPublicKey::from_pkcs1_der(root_key)?;
         let mut hash = Sha256::new();
@@ -161,7 +161,7 @@ pub fn root_key_hash(root: Vec<u8>) -> Result<[u8; 32]> {
 pub fn root_key_table_hash(root_certs: Vec<Vec<u8>>) -> Result<[u8; 32]> {
     let mut rkth = Sha256::new();
     for root in pad_roots(root_certs)? {
-        rkth.update(&root_key_hash(root)?);
+        rkth.update(&root_key_hash(&root)?);
     }
     Ok(rkth.finalize().as_slice().try_into()?)
 }
