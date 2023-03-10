@@ -53,10 +53,10 @@ pub fn stamp_image(
     root_certs: Vec<Vec<u8>>,
     execution_address: u32,
 ) -> Result<Vec<u8>> {
-    if signing_certs.len() < 1 {
+    if signing_certs.is_empty() {
         bail!("Need at least one signing certificate");
     }
-    if root_certs.len() < 1 {
+    if root_certs.is_empty() {
         bail!("Need at least one root certificate");
     }
 
