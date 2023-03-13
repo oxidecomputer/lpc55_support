@@ -35,12 +35,12 @@ fn get_pad(val: usize) -> usize {
     }
 }
 
-fn pad_roots(mut roots: Vec<Vec<u8>>) -> Result<Vec<Vec<u8>>> {
+fn pad_roots(mut roots: Vec<Vec<u8>>) -> Result<[Vec<u8>; 4]> {
     if roots.len() > 4 {
         bail!("Too many roots, max four");
     }
     roots.resize_with(4, Vec::new);
-    Ok(roots)
+    Ok(roots.try_into().unwrap())
 }
 
 /// Prepare an image for signing: append a certificate table,
