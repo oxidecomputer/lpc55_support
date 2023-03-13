@@ -10,7 +10,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         include:
           - os: ubuntu-latest
-            deps: sudo apt-get install libudev-dev binutils-arm-none-eabi
+            deps: sudo apt-get update && sudo apt-get install libudev-dev binutils-arm-none-eabi
           - os: windows-latest
             deps: |
               Invoke-WebRequest -Uri https://github.com/steveklabnik/arm-none-eabi-objcopy/releases/download/9-2020-q2-update/arm-none-eabi-objcopy.exe -OutFile "$Env:RUNNER_TEMP\arm-none-eabi-objcopy.exe"

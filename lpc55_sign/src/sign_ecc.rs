@@ -5,12 +5,11 @@
 use anyhow::Result;
 use byteorder::{ByteOrder, WriteBytesExt};
 use elliptic_curve::generic_array::typenum::Unsigned;
-use elliptic_curve::pkcs8::der::Decodable;
+use elliptic_curve::pkcs8::DecodePrivateKey;
 use lpc55_areas::*;
 use p256::{
-    ecdsa::{signature::Signer, SigningKey, VerifyingKey},
-    pkcs8::FromPrivateKey,
-    NistP256,
+    ecdsa::{signature::Signer, Signature, SigningKey, VerifyingKey},
+    NistP256, SecretKey,
 };
 use packed_struct::prelude::*;
 use std::convert::TryInto;
@@ -49,9 +48,8 @@ fn do_ecc_sign_image(
 
     // XXX is this the right way to be accessing this? Can we abstract
     // this more to avoid being tied to p256?
-    let priv_key_pkcs8 = p256::pkcs8::PrivateKeyInfo::from_der(&priv_key_bytes).unwrap();
-
-    let signing_key = SigningKey::from_pkcs8_private_key_info(priv_key_pkcs8).unwrap();
+    let secret_key = SecretKey::from_pkcs8_der(&priv_key_bytes).unwrap();
+    let signing_key = SigningKey::from(&secret_key);
     let verify_key = VerifyingKey::from(&signing_key);
 
     // Based on the docs, this format should be
@@ -123,7 +121,7 @@ fn do_ecc_sign_image(
     drop(out);
 
     let sign_bytes = std::fs::read(outfile_path)?;
-    let sig = signing_key.sign(&sign_bytes);
+    let sig: Signature = signing_key.sign(&sign_bytes);
 
     let sig_len = sig.to_der().as_bytes().len();
 
