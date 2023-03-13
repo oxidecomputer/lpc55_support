@@ -10,6 +10,7 @@ use lpc55_isp::isp::{do_ping, BootloaderProperty, KeyType};
 use serialport::{DataBits, FlowControl, Parity, StopBits};
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::time::Duration;
 
 #[derive(Debug, Parser)]
@@ -20,19 +21,17 @@ enum ISPCommand {
     /// Reads memory from the specified address and saves it at the path
     #[clap(name = "read-memory")]
     ReadMemory {
-        #[clap(parse(try_from_str = parse_int::parse))]
+        #[arg(value_parser = parse_int::parse::<u32>)]
         address: u32,
-        #[clap(parse(try_from_str = parse_int::parse))]
+        #[arg(value_parser = parse_int::parse::<u32>)]
         count: u32,
-        #[clap(parse(from_os_str))]
         path: PathBuf,
     },
     /// Write the file to the specified address
     #[clap(name = "write-memory")]
     WriteMemory {
-        #[clap(parse(try_from_str = parse_int::parse))]
+        #[arg(value_parser = parse_int::parse::<u32>)]
         address: u32,
-        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     /// Erases all non-secure flash. This MUST be done before writing!
@@ -40,15 +39,14 @@ enum ISPCommand {
     FlashEraseAll,
     /// Erases a portion of non-secure flash. This MUST be done before writing!
     FlashEraseRegion {
-        #[clap(parse(try_from_str = parse_int::parse))]
+        #[arg(value_parser = parse_int::parse::<u32>)]
         start_address: u32,
-        #[clap(parse(try_from_str = parse_int::parse))]
+        #[arg(value_parser = parse_int::parse::<u32>)]
         byte_count: u32,
     },
     /// Write a file to the CMPA region
     #[clap(name = "write-cmpa")]
     WriteCMPA {
-        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     /// Erase the CMPA region (use to boot non-secure binaries again)
@@ -56,26 +54,22 @@ enum ISPCommand {
     EraseCMPA,
     /// Save the CMPA region to a file
     ReadCMPA {
-        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     /// Save the CFPA region to a file
     ReadCFPA {
-        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     /// Write the CFPA region from the contents of a file.
     WriteCFPA {
         #[clap(short, long)]
         update_version: bool,
-        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     /// Put a minimalist program on to allow attaching via SWD
     Restore,
     /// Send SB update file
     SendSBUpdate {
-        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     /// Set up key store this involves
@@ -84,7 +78,6 @@ enum ISPCommand {
     /// - Setting SBKEK
     /// - Writing to persistent storage
     SetupKeyStore {
-        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     /// Trigger a new enrollment in the PUF
@@ -97,11 +90,10 @@ enum ISPCommand {
     EraseKeyStore,
     /// Set the SBKEK, required for SB Updates
     SetSBKek {
-        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
     GetProperty {
-        #[clap(parse(try_from_str))]
+        #[arg(value_parser = BootloaderProperty::from_str)]
         prop: BootloaderProperty,
     },
     LastError,
