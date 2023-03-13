@@ -20,7 +20,7 @@ struct Args {
     #[clap(name = "port")]
     isp_port: String,
     /// Optional out file for the CFPA region
-    #[clap(name = "outfile", parse(from_os_str))]
+    #[clap(name = "outfile")]
     outfile: Option<PathBuf>,
 }
 
