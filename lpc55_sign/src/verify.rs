@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use anyhow::{bail, Result};
+use crate::Error;
 use log::{debug as okay, error, info, trace, warn};
 use lpc55_areas::{
     BootField, BootImageType, CFPAPage, CMPAPage, CertHeader, ROTKeyStatus, SecBootStatus,
@@ -52,7 +52,7 @@ pub fn init_verify_logger(verbose: bool) {
         .init();
 }
 
-pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()> {
+pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), Error> {
     let mut failed = false;
 
     info!("=== CMPA ====");
@@ -166,13 +166,13 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()> 
     }
 
     if failed {
-        bail!("verification failed");
+        Err(Error::VerificationFailed)
     } else {
         Ok(())
     }
 }
 
-fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bool> {
+fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bool, Error> {
     let mut failed = false;
     let header_offset = u32::from_le_bytes(image[0x28..0x2c].try_into().unwrap());
 
@@ -284,7 +284,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
             1 => rkth_revoke.rotk1,
             2 => rkth_revoke.rotk2,
             3 => rkth_revoke.rotk3,
-            i => bail!("Invalid certificate index {i}"),
+            _ => unreachable!("rkh_table must be exactly 4 elements"),
         };
         if rotk_status == ROTKeyStatus::Invalid {
             error!("RKH table has revoked this root certificate");
@@ -318,7 +318,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
     Ok(failed)
 }
 
-fn check_crc_image(image: &[u8]) -> Result<bool> {
+fn check_crc_image(image: &[u8]) -> Result<bool, Error> {
     let mut failed = false;
     let mut crc = crc_any::CRCu32::crc32mpeg2();
     crc.digest(&image[..0x28]);
@@ -334,7 +334,7 @@ fn check_crc_image(image: &[u8]) -> Result<bool> {
     Ok(failed)
 }
 
-fn check_plain_image(_image: &[u8]) -> Result<bool> {
+fn check_plain_image(_image: &[u8]) -> Result<bool, Error> {
     okay!("Nothing to check for plain image");
     Ok(false)
 }

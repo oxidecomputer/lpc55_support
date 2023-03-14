@@ -3,24 +3,7 @@ name = "lpc55_areas"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-anyhow.workspace = true
 bitfield.workspace = true
-byteorder.workspace = true
-hex.workspace = true
-num-derive.workspace = true
-num-traits.workspace = true
 packed_struct.workspace = true
-packed_struct_codegen.workspace = true
-parse_int.workspace = true
 serde.workspace = true
-
-[features]
-default = ["binaries"]
-binaries = []
-
-[lib]
-test = false
-bench = false

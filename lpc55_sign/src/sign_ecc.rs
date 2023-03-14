@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use anyhow::Result;
+use crate::Error;
 use byteorder::{ByteOrder, WriteBytesExt};
 use elliptic_curve::generic_array::typenum::Unsigned;
 use elliptic_curve::pkcs8::DecodePrivateKey;
@@ -40,7 +40,7 @@ fn do_ecc_sign_image(
     priv_key_path: &Path,
     outfile_path: &Path,
     address: u32,
-) -> Result<()> {
+) -> Result<(), Error> {
     let mut bytes = std::fs::read(binary_path)?;
     let image_pad = get_pad(bytes.len());
 
@@ -149,6 +149,6 @@ pub fn ecc_sign_image(
     priv_key: &Path,
     dest_bin: &Path,
     address: u32,
-) -> Result<()> {
+) -> Result<(), Error> {
     do_ecc_sign_image(src_bin, priv_key, dest_bin, address)
 }

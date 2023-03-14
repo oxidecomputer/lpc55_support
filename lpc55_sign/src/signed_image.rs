@@ -4,7 +4,7 @@
 
 use std::convert::TryInto;
 
-use anyhow::{bail, Result};
+use crate::Error;
 use byteorder::{ByteOrder, LittleEndian};
 use clap::Parser;
 use lpc55_areas::*;
@@ -35,9 +35,9 @@ fn get_pad(val: usize) -> usize {
     }
 }
 
-fn pad_roots(mut roots: Vec<Vec<u8>>) -> Result<[Vec<u8>; 4]> {
+fn pad_roots(mut roots: Vec<Vec<u8>>) -> Result<[Vec<u8>; 4], Error> {
     if roots.len() > 4 {
-        bail!("Too many roots, max four");
+        return Err(Error::TooManyRoots(roots.len()));
     }
     roots.resize_with(4, Vec::new);
     Ok(roots.try_into().unwrap())
@@ -52,12 +52,12 @@ pub fn stamp_image(
     signing_certs: Vec<Vec<u8>>,
     root_certs: Vec<Vec<u8>>,
     execution_address: u32,
-) -> Result<Vec<u8>> {
+) -> Result<Vec<u8>, Error> {
     if signing_certs.is_empty() {
-        bail!("Need at least one signing certificate");
+        return Err(Error::NoSigningCertificate);
     }
     if root_certs.is_empty() {
-        bail!("Need at least one root certificate");
+        return Err(Error::NoRootCertificate);
     }
 
     // Generate the certificate table, including the padded length
@@ -80,7 +80,9 @@ pub fn stamp_image(
     let image_len = image_bytes.len();
     let image_pad = get_pad(image_len);
     let signed_len = image_len + image_pad + cert_header_len + cert_table_len + 4 * 32;
-    cert_header.total_image_len = signed_len.try_into()?;
+    cert_header.total_image_len = signed_len
+        .try_into()
+        .map_err(|_| Error::SignedLengthOverflow)?;
 
     // Total image length includes the length of the eventual signature.
     let (_, leaf) = parse_x509_certificate(signing_certs.last().unwrap())?;
@@ -119,23 +121,25 @@ pub fn stamp_image(
 
 /// Decode the private key, sign the stamped image with it,
 /// and append the signature to the image.
-pub fn sign_image(binary: &[u8], private_key: &str) -> Result<Vec<u8>> {
+pub fn sign_image(binary: &[u8], private_key: &str) -> Result<Vec<u8>, Error> {
     let mut image_hash = Sha256::new();
     image_hash.update(binary);
 
     let private_key = RsaPrivateKey::from_pkcs1_pem(private_key)
         .or_else(|_| RsaPrivateKey::from_pkcs8_pem(private_key))?;
-    let signature = private_key.sign(
-        rsa::pkcs1v15::Pkcs1v15Sign::new::<rsa::sha2::Sha256>(),
-        image_hash.finalize().as_slice(),
-    )?;
+    let signature = private_key
+        .sign(
+            rsa::pkcs1v15::Pkcs1v15Sign::new::<rsa::sha2::Sha256>(),
+            image_hash.finalize().as_slice(),
+        )
+        .map_err(Error::SigningError)?;
 
     let mut signed = binary.to_owned();
     signed.extend_from_slice(&signature);
     Ok(signed)
 }
 
-pub fn root_key_hash(root: &[u8]) -> Result<[u8; 32]> {
+pub fn root_key_hash(root: &[u8]) -> Result<[u8; 32], Error> {
     if root.is_empty() {
         Ok([0; 32])
     } else {
@@ -145,19 +149,19 @@ pub fn root_key_hash(root: &[u8]) -> Result<[u8; 32]> {
         let mut hash = Sha256::new();
         hash.update(&root_key.n().to_bytes_be());
         hash.update(&root_key.e().to_bytes_be());
-        Ok(hash.finalize().as_slice().try_into()?)
+        Ok(hash.finalize().into())
     }
 }
 
-pub fn root_key_table_hash(root_certs: Vec<Vec<u8>>) -> Result<[u8; 32]> {
+pub fn root_key_table_hash(root_certs: Vec<Vec<u8>>) -> Result<[u8; 32], Error> {
     let mut rkth = Sha256::new();
     for root in pad_roots(root_certs)? {
         rkth.update(root_key_hash(&root)?);
     }
-    Ok(rkth.finalize().as_slice().try_into()?)
+    Ok(rkth.finalize().into())
 }
 
-pub fn generate_cmpa(dice: DiceArgs, rotkh: [u8; 32]) -> Result<CMPAPage> {
+pub fn generate_cmpa(dice: DiceArgs, rotkh: [u8; 32]) -> Result<CMPAPage, Error> {
     let mut secure_boot_cfg = SecureBootCfg::new();
     secure_boot_cfg.set_dice(dice.with_dice);
     secure_boot_cfg.set_dice_inc_nxp_cfg(dice.with_dice_inc_nxp_cfg);
@@ -173,7 +177,7 @@ pub fn generate_cmpa(dice: DiceArgs, rotkh: [u8; 32]) -> Result<CMPAPage> {
     Ok(cmpa)
 }
 
-pub fn generate_cfpa(_root_certs: Vec<Vec<u8>>) -> Result<CFPAPage> {
+pub fn generate_cfpa(_root_certs: Vec<Vec<u8>>) -> Result<CFPAPage, Error> {
     let mut cfpa = CFPAPage::default();
     cfpa.version += 1; // allow overwrite of default 0
 

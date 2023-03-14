@@ -4,8 +4,8 @@
 
 use std::fmt::Debug;
 
-use anyhow::Result;
 use packed_struct::prelude::*;
+use packed_struct::PackingError;
 use serde::Deserialize;
 
 // Table 183, section 7.3.4
@@ -507,17 +507,17 @@ impl CMPAPage {
         }
     }
 
-    pub fn set_debug_fields(&mut self, settings: DebugSettings) -> Result<()> {
+    pub fn set_debug_fields(&mut self, settings: DebugSettings) -> Result<(), PackingError> {
         self.cc_socu_pin = settings.pin();
         self.cc_socu_dflt = settings.dflt();
         Ok(())
     }
 
-    pub fn get_cc_socu_pin(&self) -> Result<CCSOCUPin> {
+    pub fn get_cc_socu_pin(&self) -> Result<CCSOCUPin, PackingError> {
         Ok(CCSOCUPin(self.cc_socu_pin))
     }
 
-    pub fn get_cc_socu_dflt(&self) -> Result<CCSOCUDflt> {
+    pub fn get_cc_socu_dflt(&self) -> Result<CCSOCUDflt, PackingError> {
         Ok(CCSOCUDflt(self.cc_socu_dflt))
     }
 
@@ -530,22 +530,26 @@ impl CMPAPage {
     // the integer as big endian and let the pack() function swap the
     // endian for us.
 
-    pub fn set_secure_boot_cfg(&mut self, sec_boot_cfg: SecureBootCfg) -> Result<()> {
+    pub fn set_secure_boot_cfg(&mut self, sec_boot_cfg: SecureBootCfg) -> Result<(), PackingError> {
         self.secure_boot_cfg = u32::from_be_bytes(sec_boot_cfg.pack()?);
         Ok(())
     }
 
-    pub fn get_secure_boot_cfg(&self) -> Result<SecureBootCfg> {
+    pub fn get_secure_boot_cfg(&self) -> Result<SecureBootCfg, PackingError> {
         Ok(SecureBootCfg::unpack(&self.secure_boot_cfg.to_be_bytes())?)
     }
 
-    pub fn set_boot_cfg(&mut self, default_isp: DefaultIsp, boot_speed: BootSpeed) -> Result<()> {
+    pub fn set_boot_cfg(
+        &mut self,
+        default_isp: DefaultIsp,
+        boot_speed: BootSpeed,
+    ) -> Result<(), PackingError> {
         let cfg = BootCfg::new(default_isp, boot_speed);
         self.boot_cfg = u32::from_be_bytes(cfg.pack()?);
         Ok(())
     }
 
-    pub fn get_boot_cfg(&self) -> Result<BootCfg> {
+    pub fn get_boot_cfg(&self) -> Result<BootCfg, PackingError> {
         Ok(BootCfg::unpack(&self.boot_cfg.to_be_bytes())?)
     }
 
@@ -553,13 +557,13 @@ impl CMPAPage {
         self.rotkh.clone_from_slice(rotkh);
     }
 
-    pub fn to_vec(&mut self) -> Result<Vec<u8>> {
+    pub fn to_vec(&mut self) -> Result<Vec<u8>, PackingError> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.pack()?);
         Ok(bytes)
     }
 
-    pub fn from_bytes(b: &[u8; 512]) -> Result<Self> {
+    pub fn from_bytes(b: &[u8; 512]) -> Result<Self, PackingError> {
         let s = Self::unpack(b)?;
         Ok(s)
     }
@@ -780,13 +784,13 @@ pub struct CFPAPage {
 }
 
 impl CFPAPage {
-    pub fn set_debug_fields(&mut self, settings: DebugSettings) -> Result<()> {
+    pub fn set_debug_fields(&mut self, settings: DebugSettings) -> Result<(), PackingError> {
         self.dcfg_cc_socu_ns_pin = settings.pin();
         self.dcfg_cc_socu_ns_dflt = settings.dflt();
         Ok(())
     }
 
-    pub fn update_rkth_revoke(&mut self, rkth: RKTHRevoke) -> Result<()> {
+    pub fn update_rkth_revoke(&mut self, rkth: RKTHRevoke) -> Result<(), PackingError> {
         // We're very deliberate about using from_be_bytes here despite
         // the fact that this is technically going to be an le integer.
         // packed_struct does not handle endian byte swapping for structres
@@ -800,17 +804,17 @@ impl CFPAPage {
         Ok(())
     }
 
-    pub fn get_rkth_revoke(&self) -> Result<RKTHRevoke> {
+    pub fn get_rkth_revoke(&self) -> Result<RKTHRevoke, PackingError> {
         Ok(RKTHRevoke::unpack(&self.rkth_revoke.to_be_bytes())?)
     }
 
-    pub fn to_vec(&mut self) -> Result<Vec<u8>> {
+    pub fn to_vec(&mut self) -> Result<Vec<u8>, PackingError> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.pack()?);
         Ok(bytes)
     }
 
-    pub fn from_bytes(b: &[u8; 512]) -> Result<Self> {
+    pub fn from_bytes(b: &[u8; 512]) -> Result<Self, PackingError> {
         let s = Self::unpack(b)?;
         Ok(s)
     }
