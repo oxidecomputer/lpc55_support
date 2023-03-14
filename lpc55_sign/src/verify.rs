@@ -11,7 +11,8 @@ use lpc55_areas::{
 use packed_struct::{EnumCatchAll, PackedStruct};
 use rsa::{pkcs1::DecodeRsaPublicKey, signature::Verifier, PublicKeyParts};
 use sha2::Digest;
-use std::io::Write;
+use std::fmt::Write as _;
+use std::io::Write as _;
 
 /// Initializes a logger that pretty-prints logging from `verify_image`
 pub fn init_verify_logger(verbose: bool) {
@@ -255,9 +256,11 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
     for i in 0..4 {
         let rot_hash = &image[start..start + 32];
         trace!("Root key hash {i}: ");
+        let mut s = String::new();
         for r in rot_hash {
-            trace!("  {r:02x}");
+            write!(&mut s, "{r:02x}").unwrap();
         }
+        trace!("  {s}");
         rkh_sha.update(rot_hash);
         rkh_table.push(rot_hash.to_owned());
         start += 32;
