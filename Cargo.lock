@@ -344,6 +344,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "env_logger"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85cdab6a89accf66733ad5a1693a4dcced6aeff64602b634530dd73c1f3ee9f0"
+dependencies = [
+ "is-terminal",
+ "log",
+ "termcolor",
+]
+
+[[package]]
 name = "errno"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -573,7 +584,9 @@ dependencies = [
  "crc-any",
  "ecdsa",
  "elliptic-curve",
+ "env_logger",
  "hex",
+ "log",
  "lpc55_areas",
  "p256",
  "packed_struct",
