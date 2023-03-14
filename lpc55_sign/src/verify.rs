@@ -11,6 +11,46 @@ use lpc55_areas::{
 use packed_struct::{EnumCatchAll, PackedStruct};
 use rsa::{pkcs1::DecodeRsaPublicKey, signature::Verifier, PublicKeyParts};
 use sha2::Digest;
+use std::io::Write;
+
+/// Initializes a logger that pretty-prints logging from `verify_image`
+pub fn init_verify_logger(verbose: bool) {
+    let mut builder = env_logger::Builder::from_default_env();
+    builder
+        .format(|buf, record| {
+            let mut level_style = buf.style();
+
+            level_style.set_color(match record.level() {
+                log::Level::Info => env_logger::fmt::Color::Cyan,
+                log::Level::Trace => env_logger::fmt::Color::Blue,
+                log::Level::Warn => env_logger::fmt::Color::Yellow,
+                log::Level::Error => env_logger::fmt::Color::Red,
+                log::Level::Debug => env_logger::fmt::Color::Green,
+            });
+
+            writeln!(
+                buf,
+                "{: <5} | {}",
+                level_style.value(match record.level() {
+                    log::Level::Info => "",
+                    log::Level::Trace => "",
+                    log::Level::Warn => "WARN",
+                    log::Level::Error => "ERROR",
+                    log::Level::Debug => "OKAY",
+                }),
+                record.args().to_string().replace('\n', "\n      | ")
+            )
+        })
+        .filter(
+            None,
+            if verbose {
+                log::LevelFilter::Trace
+            } else {
+                log::LevelFilter::Debug
+            },
+        )
+        .init();
+}
 
 pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()> {
     info!("=== CMPA ====");

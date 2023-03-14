@@ -11,7 +11,7 @@ use lpc55_sign::{
     signed_image::{self, DiceArgs},
 };
 use serde::Deserialize;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -216,43 +216,8 @@ fn main() -> Result<()> {
                 cfpa_file.read_exact(&mut cfpa_bytes)?;
                 CFPAPage::from_bytes(&cfpa_bytes).context("could not load CFPA from bytes")?
             };
-
-            let mut builder = env_logger::Builder::from_default_env();
-            builder
-                .format(|buf, record| {
-                    let mut level_style = buf.style();
-
-                    level_style.set_color(match record.level() {
-                        log::Level::Info => env_logger::fmt::Color::Cyan,
-                        log::Level::Trace => env_logger::fmt::Color::Blue,
-                        log::Level::Warn => env_logger::fmt::Color::Yellow,
-                        log::Level::Error => env_logger::fmt::Color::Red,
-                        log::Level::Debug => env_logger::fmt::Color::Green,
-                    });
-
-                    writeln!(
-                        buf,
-                        "{: <5} | {}",
-                        level_style.value(match record.level() {
-                            log::Level::Info => "",
-                            log::Level::Trace => "",
-                            log::Level::Warn => "WARN",
-                            log::Level::Error => "ERROR",
-                            log::Level::Debug => "OKAY",
-                        }),
-                        record.args().to_string().replace('\n', "\n      | ")
-                    )
-                })
-                .filter(
-                    None,
-                    if verbose {
-                        log::LevelFilter::Trace
-                    } else {
-                        log::LevelFilter::Debug
-                    },
-                )
-                .init();
             let image = std::fs::read(src_img)?;
+            lpc55_sign::verify::init_verify_logger(verbose);
             lpc55_sign::verify::verify_image(&image, cmpa, cfpa)?;
         }
     }
