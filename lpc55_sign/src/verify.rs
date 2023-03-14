@@ -53,6 +53,8 @@ pub fn init_verify_logger(verbose: bool) {
 }
 
 pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()> {
+    let mut failed = false;
+
     info!("=== CMPA ====");
     let boot_cfg = cmpa.get_boot_cfg()?;
     let secure_boot_cfg = cmpa.get_secure_boot_cfg()?;
@@ -103,6 +105,7 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()> 
         TZMImageStatus::PresetTZM => {
             if image_type.tzm_preset == TzmPreset::NotPresent {
                 error!("    CFPA requires TZ preset, but image header says it is not present");
+                failed = true;
             } else {
                 todo!("don't yet know how to decode TZ preset");
             }
@@ -121,8 +124,10 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()> 
         TZMImageStatus::DisableTZM => {
             if image_type.tzm_image_type == TzmImageType::Enabled {
                 error!("    CFPA requires TZ disabled, but image header says it is enabled");
+                failed = true;
             } else if image_type.tzm_preset == TzmPreset::Present {
                 error!("    CFPA requires TZ disabled, but image header has tzm_preset");
+                failed = true;
             } else {
                 okay!("    TZM disabled in CMPA and in image header");
             }
@@ -130,6 +135,7 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()> 
         TZMImageStatus::EnableTZM => {
             if image_type.tzm_image_type == TzmImageType::Disabled {
                 error!("    CFPA requires TZ enabled, but image header says it is disabled");
+                failed = true;
             } else if image_type.tzm_preset == TzmPreset::Present {
                 todo!("don't yet know how to decode TZ preset");
             } else {
@@ -139,25 +145,35 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()> 
     }
 
     match image_type.img_type {
-        EnumCatchAll::Enum(BootImageType::SignedImage) => check_signed_image(image, cmpa, cfpa)?,
+        EnumCatchAll::Enum(BootImageType::SignedImage) => {
+            failed |= check_signed_image(image, cmpa, cfpa)?;
+        }
         EnumCatchAll::Enum(BootImageType::CRCImage) => {
             if secure_boot_enabled {
                 error!("Secure boot enabled in CPFA, but this is a CRC image");
+                failed = true;
             }
-            check_crc_image(image)?
+            failed |= check_crc_image(image)?
         }
         EnumCatchAll::Enum(BootImageType::PlainImage) => {
             if secure_boot_enabled {
                 error!("Secure boot enabled in CPFA, but this is a plain image");
+                failed = true;
             }
-            check_plain_image(image)?
+            failed |= check_plain_image(image)?
         }
         e => panic!("do not know how to check {e:?}"),
     }
-    Ok(())
+
+    if failed {
+        bail!("verification failed");
+    } else {
+        Ok(())
+    }
 }
 
-fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()> {
+fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bool> {
+    let mut failed = false;
     let header_offset = u32::from_le_bytes(image[0x28..0x2c].try_into().unwrap());
 
     let cert_header_size = std::mem::size_of::<CertHeader>();
@@ -172,6 +188,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
 
     if cert_header.signature != *b"cert" {
         error!("Certificate header does not begin with 'cert'");
+        failed = true;
     } else {
         okay!("Verified certificate header signature ('cert')");
     }
@@ -183,6 +200,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
             "Invalid image length in cert header: expected {expected_len}, got {}",
             cert_header.total_image_len
         );
+        failed = true;
     } else {
         okay!("Verified certificate header length");
     }
@@ -222,7 +240,10 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
         // `verify_signature` checks that it is correctly self-signed.
         match cert.verify_signature(prev_public_key) {
             Ok(()) => okay!("    Verified {kind} certificate signature"),
-            Err(e) => error!("    Failed to verify {kind} certificate signature: {e:?}"),
+            Err(e) => {
+                error!("    Failed to verify {kind} certificate signature: {e:?}");
+                failed = true
+            }
         }
 
         certs.push(cert);
@@ -244,6 +265,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
 
     if rkh_sha.finalize().as_slice() != cmpa.rotkh {
         error!("RKH in CMPA does not match Root Key hashes in image");
+        failed = true;
     } else {
         okay!("RKH in CMPA matches Root Key hashes in image");
     }
@@ -266,11 +288,13 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
         };
         if rotk_status == ROTKeyStatus::Invalid {
             error!("RKH table has revoked this root certificate");
+            failed = true;
         } else {
             okay!("RKH table has enabled this root certificate");
         }
     } else {
         error!("Certificate 0's public key is not in RKH table");
+        failed = true;
     }
 
     let public_key = &certs
@@ -286,12 +310,16 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
         rsa::pkcs1v15::VerifyingKey::<rsa::sha2::Sha256>::new_with_prefix(public_key_rsa);
     match verifying_key.verify(&image[..start], &signature) {
         Ok(()) => okay!("Verified image signature against last certificate"),
-        Err(e) => error!("Failed to verify signature: {e:?}"),
+        Err(e) => {
+            error!("Failed to verify signature: {e:?}");
+            failed = true;
+        }
     }
-    Ok(())
+    Ok(failed)
 }
 
-fn check_crc_image(image: &[u8]) -> Result<()> {
+fn check_crc_image(image: &[u8]) -> Result<bool> {
+    let mut failed = false;
     let mut crc = crc_any::CRCu32::crc32mpeg2();
     crc.digest(&image[..0x28]);
     crc.digest(&image[0x2c..]);
@@ -301,11 +329,12 @@ fn check_crc_image(image: &[u8]) -> Result<()> {
         okay!("CRC32 matches");
     } else {
         error!("CRC32 does not match");
+        failed = true;
     }
-    Ok(())
+    Ok(failed)
 }
 
-fn check_plain_image(_image: &[u8]) -> Result<()> {
+fn check_plain_image(_image: &[u8]) -> Result<bool> {
     okay!("Nothing to check for plain image");
-    Ok(())
+    Ok(false)
 }
