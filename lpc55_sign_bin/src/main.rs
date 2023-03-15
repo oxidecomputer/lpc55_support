@@ -2,10 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use log::info;
-use lpc55_areas::{BootSpeed, CFPAPage, CMPAPage, DebugSettings, DefaultIsp, ROTKeyStatus};
+use lpc55_areas::{
+    BootErrorPin, BootSpeed, CFPAPage, CMPAPage, DebugSettings, DefaultIsp, ROTKeyStatus,
+};
 use lpc55_sign::{
     crc_image, sign_ecc,
     signed_image::{self, CertConfig, DiceArgs},
@@ -23,6 +25,11 @@ struct ImageArgs {
     dest_cmpa: Option<PathBuf>,
     #[clap(long = "cfpa")]
     dest_cfpa: Option<PathBuf>,
+
+    #[clap(long, default_value_t = 0)]
+    boot_err_port: u8,
+    #[clap(long, default_value_t = 0)]
+    boot_err_pin: u8,
 }
 
 #[derive(Debug, Parser)]
@@ -101,6 +108,8 @@ fn main() -> Result<()> {
                     dest_bin,
                     dest_cmpa,
                     dest_cfpa,
+                    boot_err_pin,
+                    boot_err_port,
                 },
             cert_cfg,
         } => {
@@ -127,6 +136,9 @@ fn main() -> Result<()> {
                         debug_settings,
                         DefaultIsp::Auto,
                         BootSpeed::Fro96mhz,
+                        BootErrorPin::new(boot_err_port, boot_err_pin).ok_or_else(|| {
+                            anyhow!("invalid boot port: {boot_err_port}:{boot_err_pin}")
+                        })?,
                         rotkh,
                     )?
                     .to_vec()?,
@@ -159,6 +171,8 @@ fn main() -> Result<()> {
                     dest_bin,
                     dest_cmpa,
                     dest_cfpa,
+                    boot_err_port,
+                    boot_err_pin,
                 },
             private_key,
             root_cert,
@@ -186,6 +200,9 @@ fn main() -> Result<()> {
                         debug_settings,
                         DefaultIsp::Auto,
                         BootSpeed::Fro96mhz,
+                        BootErrorPin::new(boot_err_port, boot_err_pin).ok_or_else(|| {
+                            anyhow!("invalid boot port: {boot_err_port}:{boot_err_pin}")
+                        })?,
                         rotkh,
                     )?
                     .to_vec()?,

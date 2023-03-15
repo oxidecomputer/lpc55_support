@@ -406,6 +406,24 @@ pub enum BootSpeed {
     Fro96mhz = 0b01,
 }
 
+/// Represents a pin on the LPC55 used to indicate an error during boot
+#[derive(Copy, Clone, Debug)]
+pub struct BootErrorPin {
+    port: u8,
+    pin: u8,
+}
+
+impl BootErrorPin {
+    /// Returns `None` if the port or pin are invalid
+    pub fn new(port: u8, pin: u8) -> Option<Self> {
+        if port < 8 && pin < 32 {
+            Some(Self { port, pin })
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, Clone, PackedStruct)]
 #[packed_struct(size_bytes = "4", endian = "lsb", bit_numbering = "lsb0")]
 pub struct BootCfg {
@@ -420,19 +438,25 @@ pub struct BootCfg {
     #[packed_field(ty = "enum", bits = "7..=8")]
     pub boot_speed: EnumCatchAll<BootSpeed>,
 
-    // Technically the boot failure pin is also in this field but it's
-    // extremely unlikely to be useful to us
-    #[packed_field(bits = "31..=9")]
-    _reserved: ReservedZero<packed_bits::Bits<23>>,
+    #[packed_field(bits = "23..=9")]
+    _reserved: ReservedZero<packed_bits::Bits<15>>,
+
+    #[packed_field(bits = "26..=24")]
+    pub boot_port: u8,
+
+    #[packed_field(bits = "31..=27")]
+    pub boot_pin: u8,
 }
 
 impl BootCfg {
-    pub fn new(default_isp: DefaultIsp, boot_speed: BootSpeed) -> Self {
+    pub fn new(default_isp: DefaultIsp, boot_speed: BootSpeed, boot_pin: BootErrorPin) -> Self {
         BootCfg {
             default_isp: packed_struct::EnumCatchAll::Enum(default_isp),
             boot_speed: packed_struct::EnumCatchAll::Enum(boot_speed),
             _reserved1: ReservedZero::<packed_bits::Bits<4>>::default(),
-            _reserved: ReservedZero::<packed_bits::Bits<23>>::default(),
+            _reserved: ReservedZero::<packed_bits::Bits<15>>::default(),
+            boot_port: boot_pin.port,
+            boot_pin: boot_pin.pin,
         }
     }
 }
@@ -536,21 +560,22 @@ impl CMPAPage {
     }
 
     pub fn get_secure_boot_cfg(&self) -> Result<SecureBootCfg, PackingError> {
-        Ok(SecureBootCfg::unpack(&self.secure_boot_cfg.to_be_bytes())?)
+        SecureBootCfg::unpack(&self.secure_boot_cfg.to_be_bytes())
     }
 
     pub fn set_boot_cfg(
         &mut self,
         default_isp: DefaultIsp,
         boot_speed: BootSpeed,
+        boot_pin: BootErrorPin,
     ) -> Result<(), PackingError> {
-        let cfg = BootCfg::new(default_isp, boot_speed);
+        let cfg = BootCfg::new(default_isp, boot_speed, boot_pin);
         self.boot_cfg = u32::from_be_bytes(cfg.pack()?);
         Ok(())
     }
 
     pub fn get_boot_cfg(&self) -> Result<BootCfg, PackingError> {
-        Ok(BootCfg::unpack(&self.boot_cfg.to_be_bytes())?)
+        BootCfg::unpack(&self.boot_cfg.to_be_bytes())
     }
 
     pub fn set_rotkh(&mut self, rotkh: &[u8; 32]) {
@@ -805,7 +830,7 @@ impl CFPAPage {
     }
 
     pub fn get_rkth_revoke(&self) -> Result<RKTHRevoke, PackingError> {
-        Ok(RKTHRevoke::unpack(&self.rkth_revoke.to_be_bytes())?)
+        RKTHRevoke::unpack(&self.rkth_revoke.to_be_bytes())
     }
 
     pub fn to_vec(&mut self) -> Result<Vec<u8>, PackingError> {

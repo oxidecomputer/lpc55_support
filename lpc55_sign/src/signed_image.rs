@@ -193,6 +193,7 @@ pub fn generate_cmpa(
     debug: DebugSettings,
     default_isp: DefaultIsp,
     speed: BootSpeed,
+    boot_error_pin: BootErrorPin,
     rotkh: [u8; 32],
 ) -> Result<CMPAPage, Error> {
     if dice.with_dice && !enable_secure_boot {
@@ -210,7 +211,7 @@ pub fn generate_cmpa(
     cmpa.set_secure_boot_cfg(secure_boot_cfg)?;
     cmpa.set_rotkh(&rotkh);
     cmpa.set_debug_fields(debug)?;
-    cmpa.set_boot_cfg(default_isp, speed)?;
+    cmpa.set_boot_cfg(default_isp, speed, boot_error_pin)?;
     Ok(cmpa)
 }
 
