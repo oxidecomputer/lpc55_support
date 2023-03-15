@@ -538,7 +538,7 @@ dependencies = [
 
 [[package]]
 name = "lpc55_areas"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bitfield",
  "packed_struct",
@@ -547,7 +547,7 @@ dependencies = [
 
 [[package]]
 name = "lpc55_isp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -567,7 +567,7 @@ dependencies = [
 
 [[package]]
 name = "lpc55_sign"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "byteorder",
  "clap",
@@ -588,7 +588,7 @@ dependencies = [
 
 [[package]]
 name = "lpc55_sign_bin"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
