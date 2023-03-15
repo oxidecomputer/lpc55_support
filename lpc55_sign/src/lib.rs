@@ -39,6 +39,9 @@ pub enum Error {
     #[error("no root certificate, need at least one")]
     NoRootCertificate,
 
-    #[error("coult not fit total image length in a `u32`")]
+    #[error("could not fit total image length in a `u32`")]
     SignedLengthOverflow,
+
+    #[error("root certificate is not found in signing chain")]
+    RootNotFound,
 }

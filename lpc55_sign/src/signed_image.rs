@@ -59,6 +59,9 @@ pub fn stamp_image(
     if root_certs.is_empty() {
         return Err(Error::NoRootCertificate);
     }
+    if !root_certs.contains(&signing_certs[0]) {
+        return Err(Error::RootNotFound);
+    }
 
     // Generate the certificate table, including the padded length
     // of each certificate.
