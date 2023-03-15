@@ -44,4 +44,7 @@ pub enum Error {
 
     #[error("root certificate is not found in signing chain")]
     RootNotFound,
+
+    #[error("must set secure boot to use DICE")]
+    DiceWithoutSecureBoot,
 }

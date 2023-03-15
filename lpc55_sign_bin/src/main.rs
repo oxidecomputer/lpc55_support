@@ -141,6 +141,7 @@ fn main() -> Result<()> {
                     dest_cmpa,
                     signed_image::generate_cmpa(
                         dice_args,
+                        true,
                         debug_settings,
                         DefaultIsp::Auto,
                         BootSpeed::Fro96mhz,
@@ -199,6 +200,7 @@ fn main() -> Result<()> {
                     dest_cmpa,
                     signed_image::generate_cmpa(
                         dice_args,
+                        true,
                         debug_settings,
                         DefaultIsp::Auto,
                         BootSpeed::Fro96mhz,

@@ -164,19 +164,25 @@ pub fn root_key_table_hash(root_certs: Vec<Vec<u8>>) -> Result<[u8; 32], Error> 
     Ok(rkth.finalize().into())
 }
 
+/// Generates a CMPA page
 pub fn generate_cmpa(
     dice: DiceArgs,
+    enable_secure_boot: bool,
     debug: DebugSettings,
     default_isp: DefaultIsp,
     speed: BootSpeed,
     rotkh: [u8; 32],
 ) -> Result<CMPAPage, Error> {
+    if dice.with_dice && !enable_secure_boot {
+        return Err(Error::DiceWithoutSecureBoot);
+    }
+
     let mut secure_boot_cfg = SecureBootCfg::new();
     secure_boot_cfg.set_dice(dice.with_dice);
     secure_boot_cfg.set_dice_inc_nxp_cfg(dice.with_dice_inc_nxp_cfg);
     secure_boot_cfg.set_dice_inc_cust_cfg(dice.with_dice_cust_cfg);
     secure_boot_cfg.set_dice_inc_sec_epoch(dice.with_dice_inc_sec_epoch);
-    secure_boot_cfg.set_sec_boot(true);
+    secure_boot_cfg.set_sec_boot(enable_secure_boot);
 
     let mut cmpa = CMPAPage::new();
     cmpa.set_secure_boot_cfg(secure_boot_cfg)?;
