@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::convert::TryInto;
+use std::{convert::TryInto, path::PathBuf};
 
 use crate::Error;
 use byteorder::{ByteOrder, LittleEndian};
@@ -16,6 +16,23 @@ use rsa::{
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use x509_parser::parse_x509_certificate;
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct CertConfig {
+    /// The file containing the private key with which to sign the image.
+    pub private_key: PathBuf,
+
+    /// The chain of DER-encoded signing certificate files, in root-to-leaf
+    /// order. The image will be signed with the private key corresponding
+    /// to the the leaf (last) certificate.
+    pub signing_certs: Vec<PathBuf>,
+
+    /// The full set of (up to four) DER-encoded root certificate files,
+    /// from which the root key hashes are derived. Must contain the root
+    /// (first) certificate in `signing_certs`.
+    pub root_certs: Vec<PathBuf>,
+}
 
 #[derive(Clone, Debug, Parser, Deserialize)]
 pub struct DiceArgs {

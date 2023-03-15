@@ -598,7 +598,6 @@ dependencies = [
  "log",
  "lpc55_areas",
  "lpc55_sign",
- "serde",
  "toml",
 ]
 

@@ -8,28 +8,10 @@ use log::info;
 use lpc55_areas::{BootSpeed, CFPAPage, CMPAPage, DebugSettings, DefaultIsp, ROTKeyStatus};
 use lpc55_sign::{
     crc_image, sign_ecc,
-    signed_image::{self, DiceArgs},
+    signed_image::{self, CertConfig, DiceArgs},
 };
-use serde::Deserialize;
 use std::io::Read;
 use std::path::PathBuf;
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct CertConfig {
-    /// The file containing the private key with which to sign the image.
-    private_key: PathBuf,
-
-    /// The chain of DER-encoded signing certificate files, in root-to-leaf
-    /// order. The image will be signed with the private key corresponding
-    /// to the the leaf (last) certificate.
-    signing_certs: Vec<PathBuf>,
-
-    /// The full set of (up to four) DER-encoded root certificate files,
-    /// from which the root key hashes are derived. Must contain the root
-    /// (first) certificate in `signing_certs`.
-    root_certs: Vec<PathBuf>,
-}
 
 #[derive(Debug, Parser)]
 struct ImageArgs {
