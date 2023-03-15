@@ -35,19 +35,18 @@ pub struct CertConfig {
 }
 
 #[derive(Clone, Debug, Parser, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct DiceArgs {
     #[clap(long)]
-    #[serde(default)]
+    #[serde(default, rename = "enable-dice")]
     with_dice: bool,
     #[clap(long)]
-    #[serde(default)]
+    #[serde(default, rename = "dice-inc-nxp-cfg")]
     with_dice_inc_nxp_cfg: bool,
     #[clap(long)]
-    #[serde(default)]
+    #[serde(default, rename = "dice-cust-cfg")]
     with_dice_cust_cfg: bool,
     #[clap(long)]
-    #[serde(default)]
+    #[serde(default, rename = "dice-inc-sec-epoch")]
     with_dice_inc_sec_epoch: bool,
 }
 
