@@ -96,6 +96,11 @@ struct Opts {
 fn main() -> Result<()> {
     let cmd = Opts::parse();
 
+    // VerifySignedImage has a custom logger; everyone else can use the default
+    if !matches!(cmd.cmd, Command::VerifySignedImage { .. }) {
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    }
+
     match cmd.cmd {
         Command::Crc {
             src_bin,
