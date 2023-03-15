@@ -35,6 +35,7 @@ pub struct CertConfig {
 }
 
 #[derive(Clone, Debug, Parser, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct DiceArgs {
     #[clap(long)]
     #[serde(default)]
