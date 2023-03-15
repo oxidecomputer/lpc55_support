@@ -3,7 +3,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 pub mod crc_image;
-pub mod sign_ecc;
 pub mod signed_image;
 pub mod verify;
 

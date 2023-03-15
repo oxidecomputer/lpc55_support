@@ -573,8 +573,6 @@ dependencies = [
  "clap",
  "colored",
  "crc-any",
- "ecdsa",
- "elliptic-curve",
  "env_logger",
  "hex",
  "log",

@@ -2,14 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use log::info;
 use lpc55_areas::{
     BootErrorPin, BootSpeed, CFPAPage, CMPAPage, DebugSettings, DefaultIsp, ROTKeyStatus,
 };
 use lpc55_sign::{
-    crc_image, sign_ecc,
+    crc_image,
     signed_image::{self, CertConfig, DiceArgs},
 };
 use std::io::Read;
@@ -17,19 +17,12 @@ use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 struct ImageArgs {
+    #[clap(short = 'i', long = "in", help = "source file (binary)")]
     src_bin: PathBuf,
+    #[clap(short = 'o', long = "out", help = "output file (binary)")]
     dest_bin: PathBuf,
     #[clap(long, default_value_t = 0)]
     address: u32,
-    #[clap(long = "cmpa")]
-    dest_cmpa: Option<PathBuf>,
-    #[clap(long = "cfpa")]
-    dest_cfpa: Option<PathBuf>,
-
-    #[clap(long, default_value_t = 0)]
-    boot_err_port: u8,
-    #[clap(long, default_value_t = 0)]
-    boot_err_pin: u8,
 }
 
 #[derive(Debug, Parser)]
@@ -37,35 +30,43 @@ enum Command {
     /// Generate a non-secure CRC image
     #[clap(name = "crc")]
     Crc {
-        src_bin: PathBuf,
-        dest_bin: PathBuf,
-        #[clap(long, default_value_t = 0)]
-        address: u32,
+        #[clap(flatten)]
+        image: ImageArgs,
     },
-    ChainedImage {
+    Cmpa {
         #[clap(flatten)]
         dice_args: DiceArgs,
+
+        #[clap(short = 'o', long = "out", help = "output file (binary)")]
+        dest_cmpa: PathBuf,
+
         #[clap(flatten)]
-        image_args: ImageArgs,
-        cert_cfg: PathBuf,
+        certs: CertArgs,
+
+        #[clap(
+            long,
+            default_value_t = 0,
+            help = "port on which to indicate boot errors"
+        )]
+        boot_err_port: u8,
+        #[clap(
+            long,
+            default_value_t = 0,
+            help = "pin on which to indicate boot errors"
+        )]
+        boot_err_pin: u8,
     },
-    /// Generate a secure signed image and corresponding CMPA region
-    #[clap(name = "signed-image")]
+    Cfpa {
+        dest_cfpa: PathBuf,
+    },
+    /// Generate a secure signed image
+    #[clap(name = "signed-image", group = clap::ArgGroup::new("mode").multiple(false))]
     SignedImage {
         #[clap(flatten)]
-        dice_args: DiceArgs,
-        #[clap(flatten)]
         image_args: ImageArgs,
-        private_key: PathBuf,
-        root_cert: PathBuf,
-    },
-    #[clap(name = "ecc-image")]
-    EccImage {
-        src_bin: PathBuf,
-        priv_key: PathBuf,
-        dest_bin: PathBuf,
-        #[clap(long, default_value_t = 0)]
-        address: u32,
+
+        #[clap(flatten)]
+        certs: CertArgs,
     },
     VerifySignedImage {
         #[clap(short, long)]
@@ -74,6 +75,36 @@ enum Command {
         src_cfpa: PathBuf,
         src_img: PathBuf,
     },
+}
+
+#[derive(Debug, Parser)]
+struct CertArgs {
+    #[clap(long, requires = "root_cert")]
+    private_key: Option<PathBuf>,
+    #[clap(long, requires = "private_key")]
+    root_cert: Option<PathBuf>,
+
+    #[clap(long, conflicts_with_all = ["private_key", "root_cert"])]
+    cert_cfg: Option<PathBuf>,
+}
+
+impl CertArgs {
+    fn try_into_config(self) -> Result<CertConfig> {
+        if (self.private_key.is_none() || self.root_cert.is_none()) && self.cert_cfg.is_none() {
+            bail!("must provide either root-cert + private-key, or cert-cfg")
+        } else if let Some(s) = self.cert_cfg {
+            let cfg_contents = std::fs::read(s)?;
+            let cfg = toml::from_slice(&cfg_contents)?;
+            Ok(cfg)
+        } else {
+            let root = self.root_cert.unwrap();
+            Ok(CertConfig {
+                private_key: self.private_key.unwrap(),
+                root_certs: vec![root.clone()],
+                signing_certs: vec![root],
+            })
+        }
+    }
 }
 
 #[derive(Debug, Parser)]
@@ -91,149 +122,74 @@ fn main() -> Result<()> {
     }
 
     match cmd.cmd {
-        Command::Crc {
-            src_bin,
-            dest_bin,
-            address,
-        } => {
-            crc_image::update_crc(&src_bin, &dest_bin, address)?;
-            info!("CRC image written to {:?}", &dest_bin);
+        Command::Crc { image } => {
+            crc_image::update_crc(&image.src_bin, &image.dest_bin, image.address)?;
+            info!("CRC image written to {:?}", &image.dest_bin);
         }
-        Command::ChainedImage {
+        Command::Cmpa {
+            dest_cmpa,
             dice_args,
+            certs,
+            boot_err_pin,
+            boot_err_port,
+        } => {
+            let cfg: CertConfig = certs.try_into_config()?;
+            let root_certs = read_certs(&cfg.root_certs)?;
+            let debug_settings = DebugSettings::default();
+            let rotkh = signed_image::root_key_table_hash(root_certs)?;
+            std::fs::write(
+                &dest_cmpa,
+                signed_image::generate_cmpa(
+                    dice_args,
+                    true,
+                    debug_settings,
+                    DefaultIsp::Auto,
+                    BootSpeed::Fro96mhz,
+                    BootErrorPin::new(boot_err_port, boot_err_pin).ok_or_else(|| {
+                        anyhow!("invalid boot port: {boot_err_port}:{boot_err_pin}")
+                    })?,
+                    rotkh,
+                )?
+                .to_vec()?,
+            )?;
+            info!("CMPA written to {}", dest_cmpa.display());
+        }
+        Command::Cfpa { dest_cfpa } => {
+            let debug_settings = DebugSettings::default();
+            std::fs::write(
+                &dest_cfpa,
+                signed_image::generate_cfpa(
+                    debug_settings,
+                    [
+                        ROTKeyStatus::enabled(),
+                        ROTKeyStatus::invalid(),
+                        ROTKeyStatus::invalid(),
+                        ROTKeyStatus::invalid(),
+                    ],
+                )?
+                .to_vec()?,
+            )?;
+            info!("CFPA written to {}", dest_cfpa.display());
+        }
+
+        Command::SignedImage {
             image_args:
                 ImageArgs {
                     address,
                     src_bin,
                     dest_bin,
-                    dest_cmpa,
-                    dest_cfpa,
-                    boot_err_pin,
-                    boot_err_port,
                 },
-            cert_cfg,
+            certs,
         } => {
-            let cfg_contents = std::fs::read(cert_cfg)?;
-            let cfg: CertConfig = toml::from_slice(&cfg_contents)?;
+            let cfg = certs.try_into_config()?;
             let private_key = std::fs::read_to_string(&cfg.private_key)?;
             let image = std::fs::read(src_bin)?;
             let signing_certs = read_certs(&cfg.signing_certs)?;
             let root_certs = read_certs(&cfg.root_certs)?;
-            let stamped =
-                signed_image::stamp_image(image, signing_certs, root_certs.clone(), address)?;
+            let stamped = signed_image::stamp_image(image, signing_certs, root_certs, address)?;
             let signed = signed_image::sign_image(&stamped, &private_key)?;
             std::fs::write(&dest_bin, signed)?;
             info!("Signed image written to {}", &dest_bin.display());
-
-            let debug_settings = DebugSettings::default();
-            if let Some(dest_cmpa) = &dest_cmpa {
-                let rotkh = signed_image::root_key_table_hash(root_certs)?;
-                std::fs::write(
-                    dest_cmpa,
-                    signed_image::generate_cmpa(
-                        dice_args,
-                        true,
-                        debug_settings,
-                        DefaultIsp::Auto,
-                        BootSpeed::Fro96mhz,
-                        BootErrorPin::new(boot_err_port, boot_err_pin).ok_or_else(|| {
-                            anyhow!("invalid boot port: {boot_err_port}:{boot_err_pin}")
-                        })?,
-                        rotkh,
-                    )?
-                    .to_vec()?,
-                )?;
-                info!("CMPA written to {}", dest_cmpa.display());
-            }
-            if let Some(dest_cfpa) = &dest_cfpa {
-                std::fs::write(
-                    dest_cfpa,
-                    signed_image::generate_cfpa(
-                        debug_settings,
-                        [
-                            ROTKeyStatus::enabled(),
-                            ROTKeyStatus::invalid(),
-                            ROTKeyStatus::invalid(),
-                            ROTKeyStatus::invalid(),
-                        ],
-                    )?
-                    .to_vec()?,
-                )?;
-                info!("CFPA written to {}", dest_cfpa.display());
-            }
-        }
-        Command::SignedImage {
-            dice_args,
-            image_args:
-                ImageArgs {
-                    address,
-                    src_bin,
-                    dest_bin,
-                    dest_cmpa,
-                    dest_cfpa,
-                    boot_err_port,
-                    boot_err_pin,
-                },
-            private_key,
-            root_cert,
-        } => {
-            let private_key = std::fs::read_to_string(private_key)?;
-            let root_cert = std::fs::read(root_cert)?;
-            let signing_certs = vec![root_cert.clone()];
-            let root_certs = vec![root_cert, vec![], vec![], vec![]];
-
-            let image = std::fs::read(src_bin)?;
-            let stamped =
-                signed_image::stamp_image(image, signing_certs, root_certs.clone(), address)?;
-            let signed = signed_image::sign_image(&stamped, &private_key)?;
-            std::fs::write(&dest_bin, signed)?;
-            info!("Signed image written to {}", &dest_bin.display());
-
-            let debug_settings = DebugSettings::default();
-            if let Some(dest_cmpa) = &dest_cmpa {
-                let rotkh = signed_image::root_key_table_hash(root_certs)?;
-                std::fs::write(
-                    dest_cmpa,
-                    signed_image::generate_cmpa(
-                        dice_args,
-                        true,
-                        debug_settings,
-                        DefaultIsp::Auto,
-                        BootSpeed::Fro96mhz,
-                        BootErrorPin::new(boot_err_port, boot_err_pin).ok_or_else(|| {
-                            anyhow!("invalid boot port: {boot_err_port}:{boot_err_pin}")
-                        })?,
-                        rotkh,
-                    )?
-                    .to_vec()?,
-                )?;
-                info!("CMPA written to {}", dest_cmpa.display());
-            }
-            if let Some(dest_cfpa) = &dest_cfpa {
-                std::fs::write(
-                    dest_cfpa,
-                    signed_image::generate_cfpa(
-                        debug_settings,
-                        [
-                            ROTKeyStatus::enabled(),
-                            ROTKeyStatus::invalid(),
-                            ROTKeyStatus::invalid(),
-                            ROTKeyStatus::invalid(),
-                        ],
-                    )?
-                    .to_vec()?,
-                )?;
-                info!("CFPA written to {}", dest_cfpa.display());
-            }
-        }
-        Command::EccImage {
-            src_bin,
-            priv_key,
-            dest_bin,
-            address,
-        } => {
-            sign_ecc::ecc_sign_image(&src_bin, &priv_key, &dest_bin, address)?;
-            info!("ECC image written to {:?}", &dest_bin);
         }
         Command::VerifySignedImage {
             src_cmpa,
