@@ -16,7 +16,7 @@ use std::path::PathBuf;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-struct CertConfig {
+pub struct CertConfig {
     /// The file containing the private key with which to sign the image.
     private_key: PathBuf,
 

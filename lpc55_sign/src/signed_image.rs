@@ -13,18 +13,23 @@ use rsa::{
     pkcs1::DecodeRsaPrivateKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePrivateKey, PublicKeyParts,
     RsaPrivateKey, RsaPublicKey,
 };
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use x509_parser::parse_x509_certificate;
 
-#[derive(Clone, Debug, Parser)]
+#[derive(Clone, Debug, Parser, Deserialize)]
 pub struct DiceArgs {
     #[clap(long)]
+    #[serde(default)]
     with_dice: bool,
     #[clap(long)]
+    #[serde(default)]
     with_dice_inc_nxp_cfg: bool,
     #[clap(long)]
+    #[serde(default)]
     with_dice_cust_cfg: bool,
     #[clap(long)]
+    #[serde(default)]
     with_dice_inc_sec_epoch: bool,
 }
 
