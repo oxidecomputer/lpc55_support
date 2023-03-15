@@ -33,41 +33,38 @@ enum Command {
         #[clap(flatten)]
         image: ImageArgs,
     },
+    /// Generate a CPFA bin with default debug settings
     Cmpa {
         #[clap(flatten)]
         dice_args: DiceArgs,
 
-        #[clap(short = 'o', long = "out", help = "output file (binary)")]
+        /// output file (binary)
+        #[clap(short = 'o', long = "out")]
         dest_cmpa: PathBuf,
 
         #[clap(flatten)]
         certs: CertArgs,
 
-        #[clap(
-            long,
-            default_value_t = 0,
-            help = "port on which to indicate boot errors"
-        )]
+        /// Port on which to indicate boot errors (0-7)
+        #[clap(long, default_value_t = 0)]
         boot_err_port: u8,
-        #[clap(
-            long,
-            default_value_t = 0,
-            help = "pin on which to indicate boot errors"
-        )]
+
+        /// Pin on which to indicate boot errors (0-31)
+        #[clap(long, default_value_t = 0)]
         boot_err_pin: u8,
     },
-    Cfpa {
-        dest_cfpa: PathBuf,
-    },
+    /// Generate a CPFA bin with certificate 1 enabled and default debug
+    /// settings
+    Cfpa { dest_cfpa: PathBuf },
     /// Generate a secure signed image
-    #[clap(name = "signed-image", group = clap::ArgGroup::new("mode").multiple(false))]
-    SignedImage {
+    SignImage {
         #[clap(flatten)]
         image_args: ImageArgs,
 
         #[clap(flatten)]
         certs: CertArgs,
     },
+    /// Verify a signed image, along with its CMPA / CFPA
     VerifySignedImage {
         #[clap(short, long)]
         verbose: bool,
@@ -160,6 +157,7 @@ fn main() -> Result<()> {
                 &dest_cfpa,
                 signed_image::generate_cfpa(
                     debug_settings,
+                    // TODO: allow for user control of certificates
                     [
                         ROTKeyStatus::enabled(),
                         ROTKeyStatus::invalid(),
@@ -172,7 +170,7 @@ fn main() -> Result<()> {
             info!("CFPA written to {}", dest_cfpa.display());
         }
 
-        Command::SignedImage {
+        Command::SignImage {
             image_args:
                 ImageArgs {
                     address,
