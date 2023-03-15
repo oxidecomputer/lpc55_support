@@ -5,7 +5,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use log::info;
-use lpc55_areas::{CFPAPage, CMPAPage};
+use lpc55_areas::{BootSpeed, CFPAPage, CMPAPage, DebugSettings, DefaultIsp, ROTKeyStatus};
 use lpc55_sign::{
     crc_image, sign_ecc,
     signed_image::{self, DiceArgs},
@@ -134,18 +134,35 @@ fn main() -> Result<()> {
             std::fs::write(&dest_bin, signed)?;
             info!("Signed image written to {}", &dest_bin.display());
 
+            let debug_settings = DebugSettings::default();
             if let Some(dest_cmpa) = &dest_cmpa {
-                let rotkh = signed_image::root_key_table_hash(root_certs.clone())?;
+                let rotkh = signed_image::root_key_table_hash(root_certs)?;
                 std::fs::write(
                     dest_cmpa,
-                    signed_image::generate_cmpa(dice_args, rotkh)?.to_vec()?,
+                    signed_image::generate_cmpa(
+                        dice_args,
+                        debug_settings,
+                        DefaultIsp::Auto,
+                        BootSpeed::Fro96mhz,
+                        rotkh,
+                    )?
+                    .to_vec()?,
                 )?;
                 info!("CMPA written to {}", dest_cmpa.display());
             }
             if let Some(dest_cfpa) = &dest_cfpa {
                 std::fs::write(
                     dest_cfpa,
-                    signed_image::generate_cfpa(root_certs)?.to_vec()?,
+                    signed_image::generate_cfpa(
+                        debug_settings,
+                        [
+                            ROTKeyStatus::enabled(),
+                            ROTKeyStatus::invalid(),
+                            ROTKeyStatus::invalid(),
+                            ROTKeyStatus::invalid(),
+                        ],
+                    )?
+                    .to_vec()?,
                 )?;
                 info!("CFPA written to {}", dest_cfpa.display());
             }
@@ -175,18 +192,35 @@ fn main() -> Result<()> {
             std::fs::write(&dest_bin, signed)?;
             info!("Signed image written to {}", &dest_bin.display());
 
+            let debug_settings = DebugSettings::default();
             if let Some(dest_cmpa) = &dest_cmpa {
-                let rotkh = signed_image::root_key_table_hash(root_certs.clone())?;
+                let rotkh = signed_image::root_key_table_hash(root_certs)?;
                 std::fs::write(
                     dest_cmpa,
-                    signed_image::generate_cmpa(dice_args, rotkh)?.to_vec()?,
+                    signed_image::generate_cmpa(
+                        dice_args,
+                        debug_settings,
+                        DefaultIsp::Auto,
+                        BootSpeed::Fro96mhz,
+                        rotkh,
+                    )?
+                    .to_vec()?,
                 )?;
                 info!("CMPA written to {}", dest_cmpa.display());
             }
             if let Some(dest_cfpa) = &dest_cfpa {
                 std::fs::write(
                     dest_cfpa,
-                    signed_image::generate_cfpa(root_certs)?.to_vec()?,
+                    signed_image::generate_cfpa(
+                        debug_settings,
+                        [
+                            ROTKeyStatus::enabled(),
+                            ROTKeyStatus::invalid(),
+                            ROTKeyStatus::invalid(),
+                            ROTKeyStatus::invalid(),
+                        ],
+                    )?
+                    .to_vec()?,
                 )?;
                 info!("CFPA written to {}", dest_cfpa.display());
             }

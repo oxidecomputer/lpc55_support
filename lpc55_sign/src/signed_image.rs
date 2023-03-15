@@ -164,7 +164,13 @@ pub fn root_key_table_hash(root_certs: Vec<Vec<u8>>) -> Result<[u8; 32], Error> 
     Ok(rkth.finalize().into())
 }
 
-pub fn generate_cmpa(dice: DiceArgs, rotkh: [u8; 32]) -> Result<CMPAPage, Error> {
+pub fn generate_cmpa(
+    dice: DiceArgs,
+    debug: DebugSettings,
+    default_isp: DefaultIsp,
+    speed: BootSpeed,
+    rotkh: [u8; 32],
+) -> Result<CMPAPage, Error> {
     let mut secure_boot_cfg = SecureBootCfg::new();
     secure_boot_cfg.set_dice(dice.with_dice);
     secure_boot_cfg.set_dice_inc_nxp_cfg(dice.with_dice_inc_nxp_cfg);
@@ -175,25 +181,26 @@ pub fn generate_cmpa(dice: DiceArgs, rotkh: [u8; 32]) -> Result<CMPAPage, Error>
     let mut cmpa = CMPAPage::new();
     cmpa.set_secure_boot_cfg(secure_boot_cfg)?;
     cmpa.set_rotkh(&rotkh);
-    cmpa.set_debug_fields(DebugSettings::new())?;
-    cmpa.set_boot_cfg(DefaultIsp::Auto, BootSpeed::Fro96mhz)?;
+    cmpa.set_debug_fields(debug)?;
+    cmpa.set_boot_cfg(default_isp, speed)?;
     Ok(cmpa)
 }
 
-pub fn generate_cfpa(_root_certs: Vec<Vec<u8>>) -> Result<CFPAPage, Error> {
+pub fn generate_cfpa(
+    settings: DebugSettings,
+    revoke: [ROTKeyStatus; 4],
+) -> Result<CFPAPage, Error> {
     let mut cfpa = CFPAPage::default();
     cfpa.version += 1; // allow overwrite of default 0
 
-    // TODO: derive these bits from root_certs
     let mut rkth = RKTHRevoke::new();
-    rkth.rotk0 = ROTKeyStatus::enabled();
-    rkth.rotk1 = ROTKeyStatus::invalid();
-    rkth.rotk2 = ROTKeyStatus::invalid();
-    rkth.rotk3 = ROTKeyStatus::invalid();
+    rkth.rotk0 = revoke[0];
+    rkth.rotk1 = revoke[1];
+    rkth.rotk2 = revoke[2];
+    rkth.rotk3 = revoke[3];
     cfpa.update_rkth_revoke(rkth)?;
 
-    let cfpa_settings = DebugSettings::new();
-    cfpa.set_debug_fields(cfpa_settings)?;
+    cfpa.set_debug_fields(settings)?;
 
     Ok(cfpa)
 }
