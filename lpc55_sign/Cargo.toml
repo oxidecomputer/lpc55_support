@@ -14,7 +14,6 @@ env_logger.workspace = true
 hex.workspace = true
 log.workspace = true
 lpc55_areas.workspace = true
-p256.workspace = true
 packed_struct.workspace = true
 rsa.workspace = true
 serde.workspace = true
