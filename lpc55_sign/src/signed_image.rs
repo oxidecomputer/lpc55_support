@@ -2,9 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::convert::TryInto;
+use std::{convert::TryInto, path::PathBuf};
 
-use anyhow::{bail, Result};
+use crate::Error;
 use byteorder::{ByteOrder, LittleEndian};
 use clap::Parser;
 use lpc55_areas::*;
@@ -13,18 +13,40 @@ use rsa::{
     pkcs1::DecodeRsaPrivateKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePrivateKey, PublicKeyParts,
     RsaPrivateKey, RsaPublicKey,
 };
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use x509_parser::parse_x509_certificate;
 
-#[derive(Clone, Debug, Parser)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct CertConfig {
+    /// The file containing the private key with which to sign the image.
+    pub private_key: PathBuf,
+
+    /// The chain of DER-encoded signing certificate files, in root-to-leaf
+    /// order. The image will be signed with the private key corresponding
+    /// to the the leaf (last) certificate.
+    pub signing_certs: Vec<PathBuf>,
+
+    /// The full set of (up to four) DER-encoded root certificate files,
+    /// from which the root key hashes are derived. Must contain the root
+    /// (first) certificate in `signing_certs`.
+    pub root_certs: Vec<PathBuf>,
+}
+
+#[derive(Clone, Debug, Parser, Deserialize)]
 pub struct DiceArgs {
     #[clap(long)]
+    #[serde(default, rename = "enable-dice")]
     with_dice: bool,
     #[clap(long)]
+    #[serde(default, rename = "dice-inc-nxp-cfg")]
     with_dice_inc_nxp_cfg: bool,
     #[clap(long)]
+    #[serde(default, rename = "dice-cust-cfg")]
     with_dice_cust_cfg: bool,
     #[clap(long)]
+    #[serde(default, rename = "dice-inc-sec-epoch")]
     with_dice_inc_sec_epoch: bool,
 }
 
@@ -35,9 +57,9 @@ fn get_pad(val: usize) -> usize {
     }
 }
 
-fn pad_roots(mut roots: Vec<Vec<u8>>) -> Result<[Vec<u8>; 4]> {
+fn pad_roots(mut roots: Vec<Vec<u8>>) -> Result<[Vec<u8>; 4], Error> {
     if roots.len() > 4 {
-        bail!("Too many roots, max four");
+        return Err(Error::TooManyRoots(roots.len()));
     }
     roots.resize_with(4, Vec::new);
     Ok(roots.try_into().unwrap())
@@ -52,12 +74,15 @@ pub fn stamp_image(
     signing_certs: Vec<Vec<u8>>,
     root_certs: Vec<Vec<u8>>,
     execution_address: u32,
-) -> Result<Vec<u8>> {
+) -> Result<Vec<u8>, Error> {
     if signing_certs.is_empty() {
-        bail!("Need at least one signing certificate");
+        return Err(Error::NoSigningCertificate);
     }
     if root_certs.is_empty() {
-        bail!("Need at least one root certificate");
+        return Err(Error::NoRootCertificate);
+    }
+    if !root_certs.contains(&signing_certs[0]) {
+        return Err(Error::RootNotFound);
     }
 
     // Generate the certificate table, including the padded length
@@ -80,7 +105,9 @@ pub fn stamp_image(
     let image_len = image_bytes.len();
     let image_pad = get_pad(image_len);
     let signed_len = image_len + image_pad + cert_header_len + cert_table_len + 4 * 32;
-    cert_header.total_image_len = signed_len.try_into()?;
+    cert_header.total_image_len = signed_len
+        .try_into()
+        .map_err(|_| Error::SignedLengthOverflow)?;
 
     // Total image length includes the length of the eventual signature.
     let (_, leaf) = parse_x509_certificate(signing_certs.last().unwrap())?;
@@ -119,23 +146,25 @@ pub fn stamp_image(
 
 /// Decode the private key, sign the stamped image with it,
 /// and append the signature to the image.
-pub fn sign_image(binary: &[u8], private_key: &str) -> Result<Vec<u8>> {
+pub fn sign_image(binary: &[u8], private_key: &str) -> Result<Vec<u8>, Error> {
     let mut image_hash = Sha256::new();
     image_hash.update(binary);
 
     let private_key = RsaPrivateKey::from_pkcs1_pem(private_key)
         .or_else(|_| RsaPrivateKey::from_pkcs8_pem(private_key))?;
-    let signature = private_key.sign(
-        rsa::pkcs1v15::Pkcs1v15Sign::new::<rsa::sha2::Sha256>(),
-        image_hash.finalize().as_slice(),
-    )?;
+    let signature = private_key
+        .sign(
+            rsa::pkcs1v15::Pkcs1v15Sign::new::<rsa::sha2::Sha256>(),
+            image_hash.finalize().as_slice(),
+        )
+        .map_err(Error::SigningError)?;
 
     let mut signed = binary.to_owned();
     signed.extend_from_slice(&signature);
     Ok(signed)
 }
 
-pub fn root_key_hash(root: &[u8]) -> Result<[u8; 32]> {
+pub fn root_key_hash(root: &[u8]) -> Result<[u8; 32], Error> {
     if root.is_empty() {
         Ok([0; 32])
     } else {
@@ -145,48 +174,62 @@ pub fn root_key_hash(root: &[u8]) -> Result<[u8; 32]> {
         let mut hash = Sha256::new();
         hash.update(&root_key.n().to_bytes_be());
         hash.update(&root_key.e().to_bytes_be());
-        Ok(hash.finalize().as_slice().try_into()?)
+        Ok(hash.finalize().into())
     }
 }
 
-pub fn root_key_table_hash(root_certs: Vec<Vec<u8>>) -> Result<[u8; 32]> {
+pub fn root_key_table_hash(root_certs: Vec<Vec<u8>>) -> Result<[u8; 32], Error> {
     let mut rkth = Sha256::new();
     for root in pad_roots(root_certs)? {
         rkth.update(root_key_hash(&root)?);
     }
-    Ok(rkth.finalize().as_slice().try_into()?)
+    Ok(rkth.finalize().into())
 }
 
-pub fn generate_cmpa(dice: DiceArgs, rotkh: [u8; 32]) -> Result<CMPAPage> {
+/// Generates a CMPA page
+pub fn generate_cmpa(
+    dice: DiceArgs,
+    enable_secure_boot: bool,
+    debug: DebugSettings,
+    default_isp: DefaultIsp,
+    speed: BootSpeed,
+    boot_error_pin: BootErrorPin,
+    rotkh: [u8; 32],
+) -> Result<CMPAPage, Error> {
+    if dice.with_dice && !enable_secure_boot {
+        return Err(Error::DiceWithoutSecureBoot);
+    }
+
     let mut secure_boot_cfg = SecureBootCfg::new();
     secure_boot_cfg.set_dice(dice.with_dice);
     secure_boot_cfg.set_dice_inc_nxp_cfg(dice.with_dice_inc_nxp_cfg);
     secure_boot_cfg.set_dice_inc_cust_cfg(dice.with_dice_cust_cfg);
     secure_boot_cfg.set_dice_inc_sec_epoch(dice.with_dice_inc_sec_epoch);
-    secure_boot_cfg.set_sec_boot(true);
+    secure_boot_cfg.set_sec_boot(enable_secure_boot);
 
     let mut cmpa = CMPAPage::new();
     cmpa.set_secure_boot_cfg(secure_boot_cfg)?;
     cmpa.set_rotkh(&rotkh);
-    cmpa.set_debug_fields(DebugSettings::new())?;
-    cmpa.set_boot_cfg(DefaultIsp::Auto, BootSpeed::Fro96mhz)?;
+    cmpa.set_debug_fields(debug)?;
+    cmpa.set_boot_cfg(default_isp, speed, boot_error_pin)?;
     Ok(cmpa)
 }
 
-pub fn generate_cfpa(_root_certs: Vec<Vec<u8>>) -> Result<CFPAPage> {
+pub fn generate_cfpa(
+    settings: DebugSettings,
+    revoke: [ROTKeyStatus; 4],
+) -> Result<CFPAPage, Error> {
     let mut cfpa = CFPAPage::default();
     cfpa.version += 1; // allow overwrite of default 0
 
-    // TODO: derive these bits from root_certs
     let mut rkth = RKTHRevoke::new();
-    rkth.rotk0 = ROTKeyStatus::enabled();
-    rkth.rotk1 = ROTKeyStatus::invalid();
-    rkth.rotk2 = ROTKeyStatus::invalid();
-    rkth.rotk3 = ROTKeyStatus::invalid();
+    rkth.rotk0 = revoke[0];
+    rkth.rotk1 = revoke[1];
+    rkth.rotk2 = revoke[2];
+    rkth.rotk3 = revoke[3];
     cfpa.update_rkth_revoke(rkth)?;
 
-    let cfpa_settings = DebugSettings::new();
-    cfpa.set_debug_fields(cfpa_settings)?;
+    cfpa.set_debug_fields(settings)?;
 
     Ok(cfpa)
 }

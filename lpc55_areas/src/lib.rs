@@ -4,8 +4,8 @@
 
 use std::fmt::Debug;
 
-use anyhow::Result;
 use packed_struct::prelude::*;
+use packed_struct::PackingError;
 use serde::Deserialize;
 
 // Table 183, section 7.3.4
@@ -406,6 +406,24 @@ pub enum BootSpeed {
     Fro96mhz = 0b01,
 }
 
+/// Represents a pin on the LPC55 used to indicate an error during boot
+#[derive(Copy, Clone, Debug)]
+pub struct BootErrorPin {
+    port: u8,
+    pin: u8,
+}
+
+impl BootErrorPin {
+    /// Returns `None` if the port or pin are invalid
+    pub fn new(port: u8, pin: u8) -> Option<Self> {
+        if port < 8 && pin < 32 {
+            Some(Self { port, pin })
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, Clone, PackedStruct)]
 #[packed_struct(size_bytes = "4", endian = "lsb", bit_numbering = "lsb0")]
 pub struct BootCfg {
@@ -420,19 +438,25 @@ pub struct BootCfg {
     #[packed_field(ty = "enum", bits = "7..=8")]
     pub boot_speed: EnumCatchAll<BootSpeed>,
 
-    // Technically the boot failure pin is also in this field but it's
-    // extremely unlikely to be useful to us
-    #[packed_field(bits = "31..=9")]
-    _reserved: ReservedZero<packed_bits::Bits<23>>,
+    #[packed_field(bits = "23..=9")]
+    _reserved: ReservedZero<packed_bits::Bits<15>>,
+
+    #[packed_field(bits = "26..=24")]
+    pub boot_port: u8,
+
+    #[packed_field(bits = "31..=27")]
+    pub boot_pin: u8,
 }
 
 impl BootCfg {
-    pub fn new(default_isp: DefaultIsp, boot_speed: BootSpeed) -> Self {
+    pub fn new(default_isp: DefaultIsp, boot_speed: BootSpeed, boot_pin: BootErrorPin) -> Self {
         BootCfg {
             default_isp: packed_struct::EnumCatchAll::Enum(default_isp),
             boot_speed: packed_struct::EnumCatchAll::Enum(boot_speed),
             _reserved1: ReservedZero::<packed_bits::Bits<4>>::default(),
-            _reserved: ReservedZero::<packed_bits::Bits<23>>::default(),
+            _reserved: ReservedZero::<packed_bits::Bits<15>>::default(),
+            boot_port: boot_pin.port,
+            boot_pin: boot_pin.pin,
         }
     }
 }
@@ -507,17 +531,17 @@ impl CMPAPage {
         }
     }
 
-    pub fn set_debug_fields(&mut self, settings: DebugSettings) -> Result<()> {
+    pub fn set_debug_fields(&mut self, settings: DebugSettings) -> Result<(), PackingError> {
         self.cc_socu_pin = settings.pin();
         self.cc_socu_dflt = settings.dflt();
         Ok(())
     }
 
-    pub fn get_cc_socu_pin(&self) -> Result<CCSOCUPin> {
+    pub fn get_cc_socu_pin(&self) -> Result<CCSOCUPin, PackingError> {
         Ok(CCSOCUPin(self.cc_socu_pin))
     }
 
-    pub fn get_cc_socu_dflt(&self) -> Result<CCSOCUDflt> {
+    pub fn get_cc_socu_dflt(&self) -> Result<CCSOCUDflt, PackingError> {
         Ok(CCSOCUDflt(self.cc_socu_dflt))
     }
 
@@ -530,36 +554,41 @@ impl CMPAPage {
     // the integer as big endian and let the pack() function swap the
     // endian for us.
 
-    pub fn set_secure_boot_cfg(&mut self, sec_boot_cfg: SecureBootCfg) -> Result<()> {
+    pub fn set_secure_boot_cfg(&mut self, sec_boot_cfg: SecureBootCfg) -> Result<(), PackingError> {
         self.secure_boot_cfg = u32::from_be_bytes(sec_boot_cfg.pack()?);
         Ok(())
     }
 
-    pub fn get_secure_boot_cfg(&self) -> Result<SecureBootCfg> {
-        Ok(SecureBootCfg::unpack(&self.secure_boot_cfg.to_be_bytes())?)
+    pub fn get_secure_boot_cfg(&self) -> Result<SecureBootCfg, PackingError> {
+        SecureBootCfg::unpack(&self.secure_boot_cfg.to_be_bytes())
     }
 
-    pub fn set_boot_cfg(&mut self, default_isp: DefaultIsp, boot_speed: BootSpeed) -> Result<()> {
-        let cfg = BootCfg::new(default_isp, boot_speed);
+    pub fn set_boot_cfg(
+        &mut self,
+        default_isp: DefaultIsp,
+        boot_speed: BootSpeed,
+        boot_pin: BootErrorPin,
+    ) -> Result<(), PackingError> {
+        let cfg = BootCfg::new(default_isp, boot_speed, boot_pin);
         self.boot_cfg = u32::from_be_bytes(cfg.pack()?);
         Ok(())
     }
 
-    pub fn get_boot_cfg(&self) -> Result<BootCfg> {
-        Ok(BootCfg::unpack(&self.boot_cfg.to_be_bytes())?)
+    pub fn get_boot_cfg(&self) -> Result<BootCfg, PackingError> {
+        BootCfg::unpack(&self.boot_cfg.to_be_bytes())
     }
 
     pub fn set_rotkh(&mut self, rotkh: &[u8; 32]) {
         self.rotkh.clone_from_slice(rotkh);
     }
 
-    pub fn to_vec(&mut self) -> Result<Vec<u8>> {
+    pub fn to_vec(&mut self) -> Result<Vec<u8>, PackingError> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.pack()?);
         Ok(bytes)
     }
 
-    pub fn from_bytes(b: &[u8; 512]) -> Result<Self> {
+    pub fn from_bytes(b: &[u8; 512]) -> Result<Self, PackingError> {
         let s = Self::unpack(b)?;
         Ok(s)
     }
@@ -780,13 +809,13 @@ pub struct CFPAPage {
 }
 
 impl CFPAPage {
-    pub fn set_debug_fields(&mut self, settings: DebugSettings) -> Result<()> {
+    pub fn set_debug_fields(&mut self, settings: DebugSettings) -> Result<(), PackingError> {
         self.dcfg_cc_socu_ns_pin = settings.pin();
         self.dcfg_cc_socu_ns_dflt = settings.dflt();
         Ok(())
     }
 
-    pub fn update_rkth_revoke(&mut self, rkth: RKTHRevoke) -> Result<()> {
+    pub fn update_rkth_revoke(&mut self, rkth: RKTHRevoke) -> Result<(), PackingError> {
         // We're very deliberate about using from_be_bytes here despite
         // the fact that this is technically going to be an le integer.
         // packed_struct does not handle endian byte swapping for structres
@@ -800,17 +829,17 @@ impl CFPAPage {
         Ok(())
     }
 
-    pub fn get_rkth_revoke(&self) -> Result<RKTHRevoke> {
-        Ok(RKTHRevoke::unpack(&self.rkth_revoke.to_be_bytes())?)
+    pub fn get_rkth_revoke(&self) -> Result<RKTHRevoke, PackingError> {
+        RKTHRevoke::unpack(&self.rkth_revoke.to_be_bytes())
     }
 
-    pub fn to_vec(&mut self) -> Result<Vec<u8>> {
+    pub fn to_vec(&mut self) -> Result<Vec<u8>, PackingError> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.pack()?);
         Ok(bytes)
     }
 
-    pub fn from_bytes(b: &[u8; 512]) -> Result<Self> {
+    pub fn from_bytes(b: &[u8; 512]) -> Result<Self, PackingError> {
         let s = Self::unpack(b)?;
         Ok(s)
     }

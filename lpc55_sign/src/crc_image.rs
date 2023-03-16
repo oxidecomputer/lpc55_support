@@ -2,14 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use anyhow::Result;
+use crate::Error;
 use byteorder::ByteOrder;
 use crc_any::CRCu32;
 use lpc55_areas::{BootField, BootImageType};
 use packed_struct::prelude::*;
 use std::path::Path;
 
-pub fn update_crc(src: &Path, dest: &Path, address: u32) -> Result<()> {
+pub fn update_crc(src: &Path, dest: &Path, address: u32) -> Result<(), Error> {
     let mut bytes = std::fs::read(src)?;
 
     // We need to update 3 fields before calculating the CRC:
