@@ -6,7 +6,6 @@ use std::{convert::TryInto, path::PathBuf};
 
 use crate::Error;
 use byteorder::{ByteOrder, LittleEndian};
-use clap::Parser;
 use lpc55_areas::*;
 use packed_struct::prelude::*;
 use rsa::{
@@ -34,18 +33,19 @@ pub struct CertConfig {
     pub root_certs: Vec<PathBuf>,
 }
 
-#[derive(Clone, Debug, Parser, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
+#[cfg_attr(feature = "clap", derive(clap::Parser))]
 pub struct DiceArgs {
-    #[clap(long)]
+    #[cfg_attr(feature = "clap", clap(long))]
     #[serde(default, rename = "enable-dice")]
     with_dice: bool,
-    #[clap(long)]
+    #[cfg_attr(feature = "clap", clap(long))]
     #[serde(default, rename = "dice-inc-nxp-cfg")]
     with_dice_inc_nxp_cfg: bool,
-    #[clap(long)]
+    #[cfg_attr(feature = "clap", clap(long))]
     #[serde(default, rename = "dice-cust-cfg")]
     with_dice_cust_cfg: bool,
-    #[clap(long)]
+    #[cfg_attr(feature = "clap", clap(long))]
     #[serde(default, rename = "dice-inc-sec-epoch")]
     with_dice_inc_sec_epoch: bool,
 }

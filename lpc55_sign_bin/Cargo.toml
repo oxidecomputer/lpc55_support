@@ -11,7 +11,7 @@ clap.workspace = true
 env_logger.workspace = true
 log.workspace = true
 lpc55_areas.workspace = true
-lpc55_sign.workspace = true
+lpc55_sign = { workspace = true, features = ["clap"] }
 toml.workspace = true
 
 [[bin]]
