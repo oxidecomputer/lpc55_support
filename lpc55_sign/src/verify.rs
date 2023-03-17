@@ -82,6 +82,8 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
         if expected_hash != cmpa.sha256_digest {
             error!("CMPA digest does not match expected hash");
             failed = true;
+        } else {
+            okay!("CMPA digest matches expected hash");
         }
     } else {
         okay!("CMPA digest is all 0s (unlocked)");
