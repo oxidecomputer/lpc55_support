@@ -67,7 +67,17 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
     trace!("{:#?}", cc_socu_pin);
     trace!("{:#?}", cc_socu_dflt);
     trace!("ROTKH: {:}", hex::encode(cmpa.rotkh));
-    info!("No CMPA verification implemented");
+    if cmpa.sha256_digest != [0; 32] {
+        let cmpa_bytes = cmpa.pack()?;
+        let mut cmpa_sha = sha2::Sha256::new();
+        cmpa_sha.update(&cmpa_bytes[0..cmpa_bytes.len() - 32]);
+        let expected_hash: [u8; 32] = cmpa_sha.finalize().into();
+        if expected_hash != cmpa.sha256_digest {
+            error!("CMPA digest does not match expected hash");
+        }
+    } else {
+        okay!("CMPA digest is all 0s (unlocked)");
+    }
 
     info!("=== CFPA ====");
     let rkth_revoke = cfpa.get_rkth_revoke()?;
@@ -77,7 +87,17 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
     trace!("Non-secure FW Version: {:x}", cfpa.ns_fw_version);
     trace!("Image key revoke: {:x}", cfpa.image_key_revoke);
     trace!("{:#?}", rkth_revoke);
-    info!("No CFPA verification implemented");
+    if cfpa.sha256_digest != [0; 32] {
+        let cfpa_bytes = cfpa.pack()?;
+        let mut cfpa_sha = sha2::Sha256::new();
+        cfpa_sha.update(&cfpa_bytes[0..cfpa_bytes.len() - 32]);
+        let expected_hash: [u8; 32] = cfpa_sha.finalize().into();
+        if expected_hash != cfpa.sha256_digest {
+            error!("CFPA digest does not match expected hash");
+        }
+    } else {
+        okay!("CFPA digest is all 0s (unlocked)");
+    }
 
     info!("=== Image ====");
     let image_len = u32::from_le_bytes(image[0x20..0x24].try_into().unwrap());
