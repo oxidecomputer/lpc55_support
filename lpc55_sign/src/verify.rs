@@ -135,10 +135,8 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
     trace!("Image key revoke: {:x}", cfpa.image_key_revoke);
     trace!("{:#?}", rkth_revoke);
 
-    if cfpa.sha256_digest != [0; 32] {
-        error!("CFPA digest is locked, which prevents **any** updates!");
-        failed = true;
-    }
+    // TODO: decide if we want to check CFPA digest
+
     if secure_boot_enabled {
         if (cfpa.dcfg_cc_socu_ns_pin >> 16) as u16 != (!cfpa.dcfg_cc_socu_ns_pin & 0xFFFF) as u16 {
             error!(
