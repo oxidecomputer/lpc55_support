@@ -462,7 +462,6 @@ version = "0.2.0"
 dependencies = [
  "byteorder",
  "clap",
- "colored",
  "crc-any",
  "env_logger",
  "hex",
@@ -482,6 +481,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
+ "colored",
  "env_logger",
  "log",
  "lpc55_areas",

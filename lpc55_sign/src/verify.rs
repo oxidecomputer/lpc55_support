@@ -88,15 +88,7 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
     trace!("Image key revoke: {:x}", cfpa.image_key_revoke);
     trace!("{:#?}", rkth_revoke);
     if cfpa.sha256_digest != [0; 32] {
-        let cfpa_bytes = cfpa.pack()?;
-        let mut cfpa_sha = sha2::Sha256::new();
-        cfpa_sha.update(&cfpa_bytes[0..cfpa_bytes.len() - 32]);
-        let expected_hash: [u8; 32] = cfpa_sha.finalize().into();
-        if expected_hash != cfpa.sha256_digest {
-            error!("CFPA digest does not match expected hash");
-        }
-    } else {
-        okay!("CFPA digest is all 0s (unlocked)");
+        error!("CFPA digest is locked, which prevents **any** updates!");
     }
 
     info!("=== Image ====");

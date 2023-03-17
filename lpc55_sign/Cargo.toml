@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 byteorder.workspace = true
 clap = { workspace = true, optional = true }
-colored.workspace = true
 crc-any.workspace = true
 env_logger.workspace = true
 hex.workspace = true
