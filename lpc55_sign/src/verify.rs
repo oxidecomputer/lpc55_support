@@ -120,7 +120,7 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
         if any_cc_error {
             failed = true;
         } else {
-            okay!("CC_SOCU_DFLT and CC_SOCU_PIN are compatible");
+            okay!("CMPA.CC_SOCU_DFLT,PIN are compatible");
         }
     } else {
         okay!("Secure boot is disabled; not checking CMPA.CC_SOCU_*");
@@ -142,8 +142,8 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
     if secure_boot_enabled {
         if (cfpa.dcfg_cc_socu_ns_pin >> 16) as u16 != (!cfpa.dcfg_cc_socu_ns_pin & 0xFFFF) as u16 {
             error!(
-                "CFPA.DCFG_CC_SOCU_NS_PIN is invalid {:08x}; the top and bottom \
-             u16s must be inverses of each other",
+                "CFPA.DCFG_CC_SOCU_NS_PIN is invalid {:08x}; the top and \
+                 bottom u16s must be inverses of each other",
                 cfpa.dcfg_cc_socu_ns_pin
             );
             failed = true;
@@ -153,16 +153,50 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
         if (cfpa.dcfg_cc_socu_ns_dflt >> 16) as u16 != (!cfpa.dcfg_cc_socu_ns_dflt & 0xFFFF) as u16
         {
             error!(
-                "CFPA.DCFG_CC_SOCU_NS_DFLT is invalid {:08x}; the top and bottom \
-             u16s must be inverses of each other",
+                "CFPA.DCFG_CC_SOCU_NS_DFLT is invalid {:08x}; the top and \
+                 bottom u16s must be inverses of each other",
                 cfpa.dcfg_cc_socu_ns_dflt
             );
             failed = true;
         } else {
             okay!("CFPA.DCFG_CC_SOCU_NS_DFLT is valid");
         }
+        let mut any_cc_error = false;
+        for i in 0..16 {
+            if cfpa.dcfg_cc_socu_ns_dflt & (1 << i) != 0 && cfpa.dcfg_cc_socu_ns_pin & (1 << i) == 0
+            {
+                error!(
+                    "Illegal configuration: bit {i} of CFPA.DCFG_CC_SOCU_NS* \
+                     is set in DCFG_CC_SOCU_NS_DFLT but unset in \
+                     DCFG_CC_SOCU_NS_PIN"
+                );
+                any_cc_error = true;
+            }
+        }
+        if any_cc_error {
+            failed = true;
+        } else {
+            okay!("CFPA.CDFG_CC_SOCU_NS_DFLT,PIN are compatible");
+        }
     } else {
         okay!("Secure boot is disabled; ignoring CFPA.DCFG_CC_SOCU_NS_*");
+    }
+
+    // Check CMPA / CFPA consistency; this isn't a hard error, but could be
+    // suspicious and worth investigating.
+    if secure_boot_enabled {
+        if cmpa.cc_socu_pin != cfpa.dcfg_cc_socu_ns_pin {
+            warn!(
+                "CMPA.CC_SOCU_PIN ({:08x}) != CFPA.DCFG_CC_SOCU_NS_PIN ({:08x})",
+                cmpa.cc_socu_pin, cfpa.dcfg_cc_socu_ns_pin
+            );
+        }
+        if cmpa.cc_socu_dflt != cfpa.dcfg_cc_socu_ns_dflt {
+            warn!(
+                "CMPA.CC_SOCU_DFLT ({:08x}) != CFPA.DCFG_CC_SOCU_NS_DFLT ({:08x})",
+                cmpa.cc_socu_dflt, cfpa.dcfg_cc_socu_ns_dflt
+            );
+        }
     }
 
     info!("=== Image ====");
