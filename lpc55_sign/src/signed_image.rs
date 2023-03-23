@@ -195,6 +195,7 @@ pub fn generate_cmpa(
     speed: BootSpeed,
     boot_error_pin: BootErrorPin,
     rotkh: [u8; 32],
+    lock: bool,
 ) -> Result<CMPAPage, Error> {
     if dice.with_dice && !enable_secure_boot {
         return Err(Error::DiceWithoutSecureBoot);
@@ -212,6 +213,14 @@ pub fn generate_cmpa(
     cmpa.set_rotkh(&rotkh);
     cmpa.set_debug_fields(debug)?;
     cmpa.set_boot_cfg(default_isp, speed, boot_error_pin)?;
+
+    if lock {
+        let cmpa_bytes = cmpa.pack()?;
+        let mut cmpa_sha = sha2::Sha256::new();
+        cmpa_sha.update(&cmpa_bytes[0..cmpa_bytes.len() - 32]);
+        let hash: [u8; 32] = cmpa_sha.finalize().into();
+        cmpa.sha256_digest = hash;
+    }
     Ok(cmpa)
 }
 

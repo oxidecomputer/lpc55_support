@@ -271,7 +271,7 @@ fn main() -> Result<()> {
 
             println!("If you didn't already erase the flash this operation will fail!");
             println!("This operation may take a while");
-            let mut infile = std::fs::OpenOptions::new().read(true).open(&file)?;
+            let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
 
             let mut bytes = Vec::new();
 
@@ -302,7 +302,7 @@ fn main() -> Result<()> {
         ISPCommand::WriteCMPA { file } => {
             do_ping(&mut *port)?;
 
-            let mut infile = std::fs::OpenOptions::new().read(true).open(&file)?;
+            let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
 
             let mut bytes = Vec::new();
 
@@ -355,7 +355,7 @@ fn main() -> Result<()> {
         } => {
             do_ping(&mut *port)?;
 
-            let bytes = std::fs::read(&file)?;
+            let bytes = std::fs::read(file)?;
             let mut new_cfpa = lpc55_areas::CFPAPage::from_bytes(
                 bytes[..].try_into().context("CFPA file is not 512 bytes")?,
             )?;
@@ -429,7 +429,7 @@ fn main() -> Result<()> {
             do_ping(&mut *port)?;
 
             println!("Sending SB file, this may take a while");
-            let mut infile = std::fs::OpenOptions::new().read(true).open(&file)?;
+            let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
 
             let mut bytes = Vec::new();
 
@@ -477,7 +477,7 @@ fn main() -> Result<()> {
         ISPCommand::SetSBKek { file } => {
             do_ping(&mut *port)?;
 
-            let mut infile = std::fs::OpenOptions::new().read(true).open(&file)?;
+            let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
 
             let mut raw_bytes = Vec::new();
 
@@ -502,7 +502,7 @@ fn main() -> Result<()> {
             do_generate_uds(&mut *port)?;
 
             // Step 3: Set the SBKEK
-            let mut infile = std::fs::OpenOptions::new().read(true).open(&file)?;
+            let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
 
             let mut raw_bytes = Vec::new();
 

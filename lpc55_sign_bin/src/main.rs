@@ -4,6 +4,7 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
+use colored::Colorize;
 use log::info;
 use lpc55_areas::{
     BootErrorPin, BootSpeed, CFPAPage, CMPAPage, DebugSettings, DefaultIsp, ROTKeyStatus,
@@ -12,7 +13,7 @@ use lpc55_sign::{
     crc_image,
     signed_image::{self, CertConfig, DiceArgs},
 };
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -52,6 +53,14 @@ enum Command {
         /// Pin on which to indicate boot errors (0-31)
         #[clap(long, default_value_t = 0)]
         boot_err_pin: u8,
+
+        /// Configure the CMPA to be locked.  THIS CANNOT BE UNDONE.
+        #[clap(long)]
+        lock: bool,
+
+        /// Skip interactive verification of the `--lock` option
+        #[clap(short, long)]
+        yes: bool,
     },
     /// Generate a CPFA bin with certificate 1 enabled and default debug
     /// settings
@@ -129,7 +138,27 @@ fn main() -> Result<()> {
             certs,
             boot_err_pin,
             boot_err_port,
+            lock,
+            yes,
         } => {
+            if lock {
+                println!("{}: CMPA locking CANNOT BE UNDONE!", "WARNING".red());
+                if !yes {
+                    const EXPECTED: &str = "Lock the CMPA";
+                    println!("Please type '{EXPECTED}' to continue:");
+                    print!("> ");
+                    std::io::stdout().flush().unwrap();
+                    let mut reply = String::new();
+                    std::io::stdin().read_line(&mut reply).unwrap();
+                    let reply = reply.trim();
+                    if reply != EXPECTED {
+                        bail!(
+                            "invalid reply: expected '{EXPECTED}', \
+                             got '{reply}'"
+                        );
+                    }
+                }
+            }
             let cfg: CertConfig = certs.try_into_config()?;
             let root_certs = read_certs(&cfg.root_certs)?;
             let debug_settings = DebugSettings::default();
@@ -146,6 +175,7 @@ fn main() -> Result<()> {
                         anyhow!("invalid boot port: {boot_err_port}:{boot_err_pin}")
                     })?,
                     rotkh,
+                    lock,
                 )?
                 .to_vec()?,
             )?;

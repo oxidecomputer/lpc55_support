@@ -67,7 +67,66 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
     trace!("{:#?}", cc_socu_pin);
     trace!("{:#?}", cc_socu_dflt);
     trace!("ROTKH: {:}", hex::encode(cmpa.rotkh));
-    info!("No CMPA verification implemented");
+
+    let secure_boot_enabled = matches!(
+        secure_boot_cfg.sec_boot_en,
+        SecBootStatus::SignedImage1 | SecBootStatus::SignedImage2 | SecBootStatus::SignedImage3
+    );
+    trace!("secure boot enabled in CMPA: {secure_boot_enabled}");
+
+    if cmpa.sha256_digest != [0; 32] {
+        let cmpa_bytes = cmpa.pack()?;
+        let mut cmpa_sha = sha2::Sha256::new();
+        cmpa_sha.update(&cmpa_bytes[0..cmpa_bytes.len() - 32]);
+        let expected_hash: [u8; 32] = cmpa_sha.finalize().into();
+        if expected_hash != cmpa.sha256_digest {
+            error!("CMPA digest does not match expected hash");
+            failed = true;
+        } else {
+            okay!("CMPA digest matches expected hash");
+        }
+    } else {
+        okay!("CMPA digest is all 0s (unlocked)");
+    }
+    if secure_boot_enabled {
+        if (!cmpa.cc_socu_pin >> 16) as u16 != cmpa.cc_socu_pin as u16 {
+            error!(
+                "CMPA.CC_SOCU_PIN is invalid {:08x}; the top and bottom u16s \
+                 must be inverses of each other",
+                cmpa.cc_socu_pin
+            );
+            failed = true;
+        } else {
+            okay!("CMPA.CC_SOCU_PIN is valid");
+        }
+        if (!cmpa.cc_socu_dflt >> 16) as u16 != cmpa.cc_socu_dflt as u16 {
+            error!(
+                "CMPA.CC_SOCU_DFLT is invalid {:08x}; the top and bottom u16s \
+                 must be inverses of each other",
+                cmpa.cc_socu_dflt
+            );
+            failed = true;
+        } else {
+            okay!("CMPA.CC_SOCU_DFLT is valid");
+        }
+        let mut any_cc_error = false;
+        for i in 0..16 {
+            if cmpa.cc_socu_dflt & (1 << i) != 0 && cmpa.cc_socu_pin & (1 << i) == 0 {
+                error!(
+                    "Illegal configuration: bit {i} of CMPA.CC_SOCU_* is set \
+                     in CC_SOCU_DFLT but unset in CC_SOCU_PIN"
+                );
+                any_cc_error = true;
+            }
+        }
+        if any_cc_error {
+            failed = true;
+        } else {
+            okay!("CMPA.CC_SOCU_DFLT,PIN are compatible");
+        }
+    } else {
+        okay!("Secure boot is disabled; not checking CMPA.CC_SOCU_*");
+    }
 
     info!("=== CFPA ====");
     let rkth_revoke = cfpa.get_rkth_revoke()?;
@@ -77,7 +136,68 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
     trace!("Non-secure FW Version: {:x}", cfpa.ns_fw_version);
     trace!("Image key revoke: {:x}", cfpa.image_key_revoke);
     trace!("{:#?}", rkth_revoke);
-    info!("No CFPA verification implemented");
+
+    // TODO: decide if we want to check CFPA digest
+
+    if secure_boot_enabled {
+        if (cfpa.dcfg_cc_socu_ns_pin >> 16) as u16 != (!cfpa.dcfg_cc_socu_ns_pin & 0xFFFF) as u16 {
+            error!(
+                "CFPA.DCFG_CC_SOCU_NS_PIN is invalid {:08x}; the top and \
+                 bottom u16s must be inverses of each other",
+                cfpa.dcfg_cc_socu_ns_pin
+            );
+            failed = true;
+        } else {
+            okay!("CFPA.DCFG_CC_SOCU_NS_PIN is valid");
+        }
+        if (cfpa.dcfg_cc_socu_ns_dflt >> 16) as u16 != (!cfpa.dcfg_cc_socu_ns_dflt & 0xFFFF) as u16
+        {
+            error!(
+                "CFPA.DCFG_CC_SOCU_NS_DFLT is invalid {:08x}; the top and \
+                 bottom u16s must be inverses of each other",
+                cfpa.dcfg_cc_socu_ns_dflt
+            );
+            failed = true;
+        } else {
+            okay!("CFPA.DCFG_CC_SOCU_NS_DFLT is valid");
+        }
+        let mut any_cc_error = false;
+        for i in 0..16 {
+            if cfpa.dcfg_cc_socu_ns_dflt & (1 << i) != 0 && cfpa.dcfg_cc_socu_ns_pin & (1 << i) == 0
+            {
+                error!(
+                    "Illegal configuration: bit {i} of CFPA.DCFG_CC_SOCU_NS* \
+                     is set in DCFG_CC_SOCU_NS_DFLT but unset in \
+                     DCFG_CC_SOCU_NS_PIN"
+                );
+                any_cc_error = true;
+            }
+        }
+        if any_cc_error {
+            failed = true;
+        } else {
+            okay!("CFPA.CDFG_CC_SOCU_NS_DFLT,PIN are compatible");
+        }
+    } else {
+        okay!("Secure boot is disabled; ignoring CFPA.DCFG_CC_SOCU_NS_*");
+    }
+
+    // Check CMPA / CFPA consistency; this isn't a hard error, but could be
+    // suspicious and worth investigating.
+    if secure_boot_enabled {
+        if cmpa.cc_socu_pin != cfpa.dcfg_cc_socu_ns_pin {
+            warn!(
+                "CMPA.CC_SOCU_PIN ({:08x}) != CFPA.DCFG_CC_SOCU_NS_PIN ({:08x})",
+                cmpa.cc_socu_pin, cfpa.dcfg_cc_socu_ns_pin
+            );
+        }
+        if cmpa.cc_socu_dflt != cfpa.dcfg_cc_socu_ns_dflt {
+            warn!(
+                "CMPA.CC_SOCU_DFLT ({:08x}) != CFPA.DCFG_CC_SOCU_NS_DFLT ({:08x})",
+                cmpa.cc_socu_dflt, cfpa.dcfg_cc_socu_ns_dflt
+            );
+        }
+    }
 
     info!("=== Image ====");
     let image_len = u32::from_le_bytes(image[0x20..0x24].try_into().unwrap());
@@ -94,12 +214,6 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
     } else if !is_plain && load_addr == 0 {
         warn!("Load address is 0 in a non-plain image",);
     }
-
-    let secure_boot_enabled = matches!(
-        secure_boot_cfg.sec_boot_en,
-        SecBootStatus::SignedImage1 | SecBootStatus::SignedImage2 | SecBootStatus::SignedImage3
-    );
-    trace!("secure boot enabled in CMPA: {secure_boot_enabled}");
 
     info!("Checking TZM configuration");
     match secure_boot_cfg.tzm_image_type {
