@@ -46,4 +46,10 @@ pub enum Error {
 
     #[error("must set secure boot to use DICE")]
     DiceWithoutSecureBoot,
+
+    #[error("the given image is not a plain signed XIP image")]
+    NotSigned,
+
+    #[error("the image length field does not match data")]
+    MismatchedLength,
 }
