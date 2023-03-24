@@ -242,3 +242,30 @@ pub fn generate_cfpa(
 
     Ok(cfpa)
 }
+
+pub fn remove_image_signature(mut img: Vec<u8>) -> Result<Vec<u8>, Error> {
+    let total_len = LittleEndian::read_u32(&img[0x20..0x24]);
+    let boot_field = LittleEndian::read_u32(&img[0x24..0x28]);
+    let cert_table_offset = LittleEndian::read_u32(&img[0x28..0x2c]);
+
+    if boot_field != BootImageType::SignedImage as u32 {
+        return Err(Error::NotSigned);
+    }
+    if total_len as usize != img.len() {
+        return Err(Error::MismatchedLength);
+    }
+
+    // Plain images have a length of 0
+    LittleEndian::write_u32(&mut img[0x20..0x24], 0);
+
+    // Set imageType to a plain image
+    LittleEndian::write_u32(&mut img[0x24..0x28], BootImageType::PlainImage as u32);
+
+    // Clear the offset to the certificate header
+    LittleEndian::write_u32(&mut img[0x28..0x2c], 0);
+
+    // Strip the certificate table
+    img.resize(cert_table_offset as usize, 0u8);
+
+    Ok(img)
+}

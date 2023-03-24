@@ -81,6 +81,15 @@ enum Command {
         src_cfpa: PathBuf,
         src_img: PathBuf,
     },
+    /// Removes the signature from a signed image
+    RemoveSignature {
+        /// output file (binary)
+        #[clap(short = 'i', long = "in")]
+        src_img: PathBuf,
+
+        #[clap(short = 'o', long = "out")]
+        dst_img: PathBuf,
+    },
 }
 
 #[derive(Debug, Parser)]
@@ -243,6 +252,11 @@ fn main() -> Result<()> {
             let image = std::fs::read(src_img)?;
             lpc55_sign::verify::init_verify_logger(verbose);
             lpc55_sign::verify::verify_image(&image, cmpa, cfpa)?;
+        }
+        Command::RemoveSignature { src_img, dst_img } => {
+            let image = std::fs::read(src_img)?;
+            let out = lpc55_sign::signed_image::remove_image_signature(image)?;
+            std::fs::write(dst_img, out)?;
         }
     }
 
