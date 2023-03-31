@@ -44,8 +44,8 @@ pub enum Error {
     #[error("struct packing error: {0}")]
     PackingError(#[from] packed_struct::PackingError),
 
-    #[error("x509 parsing error: {0}")]
-    X509Error(#[from] x509_parser::nom::Err<x509_parser::error::X509Error>),
+    #[error("certificate decoding error: {0}")]
+    DerError(#[from] der::Error),
 
     #[error("io error: {0}")]
     IoError(#[from] std::io::Error),
@@ -55,6 +55,12 @@ pub enum Error {
 
     #[error("RSA PKCS#8 error: {0}")]
     RsaPkcs8Error(#[from] rsa::pkcs8::Error),
+
+    #[error("RSA signature error: {0}")]
+    RsaSignatureError(#[from] rsa::signature::Error),
+
+    #[error("SPKI error: {0}")]
+    SpkiError(#[from] rsa::pkcs8::spki::Error),
 
     #[error("RSA error while signing: {0}")]
     SigningError(rsa::errors::Error),

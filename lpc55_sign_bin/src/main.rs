@@ -5,16 +5,18 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use colored::Colorize;
+use der::Decode as _;
 use log::info;
 use lpc55_areas::{
     BootErrorPin, BootSpeed, CFPAPage, CMPAPage, DebugSettings, DefaultIsp, ROTKeyStatus,
 };
 use lpc55_sign::{
     crc_image,
-    signed_image::{self, CertConfig, DiceArgs},
+    signed_image::{self, pad_roots, CertConfig, DiceArgs},
 };
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use x509_cert::Certificate;
 
 #[derive(Debug, Parser)]
 struct ImageArgs {
@@ -197,7 +199,7 @@ fn main() -> Result<()> {
                 }
             }
             let cfg: CertConfig = certs.try_into_config()?;
-            let root_certs = read_certs(&cfg.root_certs)?;
+            let root_certs = pad_roots(read_certs(&cfg.root_certs)?)?;
             let debug_settings = DebugSettings::default();
 
             let required_key_size = signed_image::required_key_size(&root_certs)?;
@@ -207,7 +209,7 @@ fn main() -> Result<()> {
                 Some(x) => bail!("Certificates have unsupported {x}-bit public keys"),
             };
 
-            let rotkh = signed_image::root_key_table_hash(root_certs)?;
+            let rotkh = signed_image::root_key_table_hash(&root_certs)?;
 
             std::fs::write(
                 &dest_cmpa,
@@ -325,9 +327,12 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn read_certs(paths: &[PathBuf]) -> Result<Vec<Vec<u8>>> {
-    Ok(paths
-        .iter()
-        .map(std::fs::read)
-        .collect::<Result<Vec<Vec<u8>>, _>>()?)
+fn read_certs(paths: &[PathBuf]) -> Result<Vec<Certificate>> {
+    let mut certs = Vec::with_capacity(paths.len());
+    for path in paths {
+        let der = std::fs::read(path)?;
+        let cert = Certificate::from_der(&der)?;
+        certs.push(cert);
+    }
+    Ok(certs)
 }
