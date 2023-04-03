@@ -448,12 +448,13 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
     }
 
     let cfpa_image_key_revoke = (cfpa.image_key_revoke & 0xFFFF) as u16;
+    let next_image_key_revoke = cfpa_image_key_revoke << 1 | 1;
     match last_cert_sn_revoke_id {
         x if x == cfpa_image_key_revoke => okay!(
             "Verified last certificate's revocation ID (0x{last_cert_sn_revoke_id:04x}) matches CFPA IMAGE_KEY_REVOKE"
         ),
-        x if x == cfpa_image_key_revoke + 1 => okay!(
-            "Verified last certificate revocation ID (0x{last_cert_sn_revoke_id:04x}) matches CFPA IMAGE_KEY_REVOKE + 1"
+        x if x == next_image_key_revoke => okay!(
+            "Verified last certificate's revocation ID (0x{last_cert_sn_revoke_id:04x}) matches next CFPA IMAGE_KEY_REVOKE (current is 0x{cfpa_image_key_revoke:04x}, next is 0x{next_image_key_revoke:04x})"
         ),
         _ => {
             error!(
