@@ -385,10 +385,10 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
     }
 
     if rkh_sha.finalize().as_slice() != cmpa.rotkh {
-        error!("RKH in CMPA does not match Root Key hashes in image");
+        error!("ROTKH in CMPA does not match RKH table in image");
         failed = true;
     } else {
-        okay!("RKH in CMPA matches Root Key hashes in image");
+        okay!("ROTKH in CMPA matches RKH table in image");
     }
 
     let mut sha = sha2::Sha256::new();
@@ -398,7 +398,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
     sha.update(public_key_rsa.e().to_bytes_be());
     let out = sha.finalize().to_vec();
     if let Some((index, _)) = rkh_table.iter().enumerate().find(|(_, k)| *k == &out) {
-        okay!("Root certificate's public key is in RKH table");
+        okay!("Root certificate's public key is in RKH table slot {index}");
         let rkth_revoke = cfpa.get_rkth_revoke()?;
         let rotk_status = match index {
             0 => rkth_revoke.rotk0,
@@ -421,7 +421,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
             }
         }
     } else {
-        error!("Certificate 0's public key is not in RKH table");
+        error!("Root certificate's public key is not in RKH table");
         failed = true;
     }
 
