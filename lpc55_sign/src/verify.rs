@@ -407,11 +407,18 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
             3 => rkth_revoke.rotk3,
             _ => unreachable!("rkh_table must be exactly 4 elements"),
         };
-        if rotk_status == ROTKeyStatus::Invalid {
-            error!("RKH table has revoked this root certificate");
-            failed = true;
-        } else {
-            okay!("RKH table has enabled this root certificate");
+        match rotk_status {
+            ROTKeyStatus::Invalid => {
+                error!("RKH table slot {index} is disabled in CFPA");
+                failed = true;
+            }
+            ROTKeyStatus::Enabled => {
+                okay!("RKH table slot {index} is enabled in CFPA");
+            }
+            ROTKeyStatus::Revoked1 | ROTKeyStatus::Revoked2 => {
+                error!("RKH table slot {index} has been revoked in CFPA");
+                failed = true;
+            }
         }
     } else {
         error!("Certificate 0's public key is not in RKH table");
