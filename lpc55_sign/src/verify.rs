@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::Error;
+use hex::ToHex as _;
 use log::{debug as okay, error, info, trace, warn};
 use lpc55_areas::{
     BootField, BootImageType, CFPAPage, CMPAPage, CertHeader, ROTKeyStatus, SecBootStatus,
@@ -180,6 +181,13 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
         }
     } else {
         okay!("Secure boot is disabled; ignoring CFPA.DCFG_CC_SOCU_NS_*");
+    }
+
+    let cfpa_image_key_revoke = (cfpa.image_key_revoke & 0xFFFF) as u16;
+    if cfpa_image_key_revoke != cfpa_image_key_revoke.next_power_of_two() - 1 {
+        warn!(
+            "IMAGE_KEY_REVOKE (0x{cfpa_image_key_revoke:04x}) should be a uniary counter but isn't"
+        )
     }
 
     // Check CMPA / CFPA consistency; this isn't a hard error, but could be
@@ -414,12 +422,42 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
         failed = true;
     }
 
-    let public_key = &certs
-        .last()
-        .unwrap()
-        .tbs_certificate
-        .subject_pki
-        .subject_public_key;
+    let last_cert = &certs.last().unwrap();
+
+    let last_cert_sn = last_cert.tbs_certificate.serial.to_bytes_be();
+    let last_cert_sn_magic = &last_cert_sn[0..2];
+    if last_cert_sn_magic != [0x3c, 0xc3] {
+        error!(
+            "Last certificate's serial number has wrong magic prefix.  Expected 0x3cc3.  Found 0x{}",
+            last_cert_sn_magic.encode_hex::<String>()
+        );
+        failed = true;
+    } else {
+        okay!("Verified last certificate's serial number has correct magic prefix");
+    }
+
+    let last_cert_sn_revoke_id = u16::from_le_bytes(last_cert_sn[2..4].try_into().unwrap());
+    if last_cert_sn_revoke_id != last_cert_sn_revoke_id.next_power_of_two() - 1 {
+        warn!("Last certificate's revocation ID (0x{last_cert_sn_revoke_id:04x}) should be a uniary counter but isn't")
+    }
+
+    let cfpa_image_key_revoke = (cfpa.image_key_revoke & 0xFFFF) as u16;
+    match last_cert_sn_revoke_id {
+        x if x == cfpa_image_key_revoke => okay!(
+            "Verified last certificate's revocation ID (0x{last_cert_sn_revoke_id:04x}) matches CFPA IMAGE_KEY_REVOKE"
+        ),
+        x if x == cfpa_image_key_revoke + 1 => okay!(
+            "Verified last certificate revocation ID (0x{last_cert_sn_revoke_id:04x}) matches CFPA IMAGE_KEY_REVOKE + 1"
+        ),
+        _ => {
+            error!(
+                "Last certificate's revocation ID (0x{last_cert_sn_revoke_id:04x}) does not match CFPA IMAGE_KEY_REVOKE (0x{cfpa_image_key_revoke:04x})"
+            );
+            failed = true;
+        }
+    }
+
+    let public_key = &last_cert.tbs_certificate.subject_pki.subject_public_key;
     let public_key_rsa = rsa::RsaPublicKey::from_pkcs1_der(public_key.as_ref()).unwrap();
     let signature = rsa::pkcs1v15::Signature::try_from(&image[start..]).unwrap();
     trace!("signature length: {}", signature.as_ref().len());
