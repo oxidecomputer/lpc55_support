@@ -14,6 +14,10 @@ use rsa::{pkcs1::DecodeRsaPublicKey, signature::Verifier, PublicKeyParts};
 use sha2::Digest;
 use std::io::Write as _;
 
+fn is_uniary(val: u16) -> bool {
+    (val + 1).is_power_of_two()
+}
+
 /// Initializes a logger that pretty-prints logging from `verify_image`
 pub fn init_verify_logger(verbose: bool) {
     let mut builder = env_logger::Builder::from_default_env();
@@ -183,7 +187,7 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
     }
 
     let cfpa_image_key_revoke = (cfpa.image_key_revoke & 0xFFFF) as u16;
-    if cfpa_image_key_revoke != cfpa_image_key_revoke.next_power_of_two() - 1 {
+    if !is_uniary(cfpa_image_key_revoke) {
         warn!(
             "IMAGE_KEY_REVOKE (0x{cfpa_image_key_revoke:04x}) should be a uniary counter but isn't"
         )
@@ -439,7 +443,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
     }
 
     let last_cert_sn_revoke_id = u16::from_le_bytes(last_cert_sn[2..4].try_into().unwrap());
-    if last_cert_sn_revoke_id != last_cert_sn_revoke_id.next_power_of_two() - 1 {
+    if !is_uniary(last_cert_sn_revoke_id) {
         warn!("Last certificate's revocation ID (0x{last_cert_sn_revoke_id:04x}) should be a uniary counter but isn't")
     }
 
