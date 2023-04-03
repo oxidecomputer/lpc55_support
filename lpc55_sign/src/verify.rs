@@ -12,7 +12,6 @@ use lpc55_areas::{
 use packed_struct::{EnumCatchAll, PackedStruct};
 use rsa::{pkcs1::DecodeRsaPublicKey, signature::Verifier, PublicKeyParts};
 use sha2::Digest;
-use std::fmt::Write as _;
 use std::io::Write as _;
 
 /// Initializes a logger that pretty-prints logging from `verify_image`
