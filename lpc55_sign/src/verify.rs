@@ -378,11 +378,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
     for i in 0..4 {
         let rot_hash = &image[start..start + 32];
         trace!("Root key hash {i}: ");
-        let mut s = String::new();
-        for r in rot_hash {
-            write!(&mut s, "{r:02x}").unwrap();
-        }
-        trace!("  {s}");
+        trace!("  {}", rot_hash.encode_hex::<String>());
         rkh_sha.update(rot_hash);
         rkh_table.push(rot_hash.to_owned());
         start += 32;
