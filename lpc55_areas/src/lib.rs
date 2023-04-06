@@ -402,8 +402,8 @@ impl DefaultIsp {
 #[derive(PrimitiveEnum, Copy, Clone, Debug)]
 pub enum BootSpeed {
     Nmpa = 0b00,
-    Fro48mhz = 0b10,
-    Fro96mhz = 0b01,
+    Fro48mhz = 0b01,
+    Fro96mhz = 0b10,
 }
 
 /// Represents a pin on the LPC55 used to indicate an error during boot
