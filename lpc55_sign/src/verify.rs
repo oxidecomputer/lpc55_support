@@ -375,7 +375,8 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
             cert.tbs_certificate.subject_pki.subject_public_key.as_ref(),
         )
         .unwrap()
-        .size() * 8;
+        .size()
+            * 8;
 
         if !matches!(
             (cmpa_rsa4k, public_key_bits),
