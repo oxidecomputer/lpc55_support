@@ -196,7 +196,7 @@ pub fn generate_cmpa(
     boot_error_pin: BootErrorPin,
     rotkh: [u8; 32],
     lock: bool,
-    use_rsa_4096: bool
+    use_rsa_4096: bool,
 ) -> Result<CMPAPage, Error> {
     if dice.with_dice && !enable_secure_boot {
         return Err(Error::DiceWithoutSecureBoot);
