@@ -52,4 +52,7 @@ pub enum Error {
 
     #[error("the image length field does not match data")]
     MismatchedLength,
+
+    #[error("public keys have varying sizes (must all be 2048 or 4096 bit)")]
+    VaryingPublicKeySizes,
 }

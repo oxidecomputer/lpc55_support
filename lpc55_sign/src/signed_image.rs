@@ -178,6 +178,25 @@ pub fn root_key_hash(root: &[u8]) -> Result<[u8; 32], Error> {
     }
 }
 
+pub fn required_key_size(root_certs: &[Vec<u8>]) -> Result<Option<usize>, Error> {
+    let mut required_key_size = None;
+    for cert in root_certs {
+        let (_, cert) = x509_parser::parse_x509_certificate(cert)?;
+        let public_key = rsa::RsaPublicKey::from_pkcs1_der(
+            cert.tbs_certificate.subject_pki.subject_public_key.as_ref(),
+        )?;
+        let public_key_bits = public_key.size() * 8;
+        if let Some(x) = required_key_size {
+            if x != public_key_bits {
+                return Err(Error::VaryingPublicKeySizes);
+            }
+        } else {
+            required_key_size = Some(public_key_bits);
+        }
+    }
+    Ok(required_key_size)
+}
+
 pub fn root_key_table_hash(root_certs: Vec<Vec<u8>>) -> Result<[u8; 32], Error> {
     let mut rkth = Sha256::new();
     for root in pad_roots(root_certs)? {

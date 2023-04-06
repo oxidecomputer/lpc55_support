@@ -13,7 +13,6 @@ use lpc55_sign::{
     crc_image,
     signed_image::{self, CertConfig, DiceArgs},
 };
-use rsa::{pkcs1::DecodeRsaPublicKey, PublicKeyParts};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
@@ -198,21 +197,7 @@ fn main() -> Result<()> {
             let root_certs = read_certs(&cfg.root_certs)?;
             let debug_settings = DebugSettings::default();
 
-            let mut required_key_size = None;
-            for cert in &root_certs {
-                let (_, cert) = x509_parser::parse_x509_certificate(&cert)?;
-                let public_key = rsa::RsaPublicKey::from_pkcs1_der(
-                    cert.tbs_certificate.subject_pki.subject_public_key.as_ref(),
-                )?;
-                let public_key_bits = public_key.size() * 8;
-                if let Some(x) = required_key_size {
-                    if x != public_key_bits {
-                        bail!("Certificates have varying public key sizes")
-                    }
-                } else {
-                    required_key_size = Some(public_key_bits);
-                }
-            }
+            let required_key_size = signed_image::required_key_size(&root_certs)?;
             let use_rsa_4096 = match required_key_size {
                 Some(2048) | None => false,
                 Some(4096) => true,
