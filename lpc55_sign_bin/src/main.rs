@@ -26,6 +26,13 @@ struct ImageArgs {
     address: u32,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
+enum RKTHState {
+    Disabled,
+    Enabled,
+    Revoked,
+}
+
 #[derive(Debug, Parser)]
 enum Command {
     /// Generate a non-secure CRC image
@@ -67,7 +74,21 @@ enum Command {
     },
     /// Generate a CPFA bin with certificate 1 enabled and default debug
     /// settings
-    Cfpa { dest_cfpa: PathBuf },
+    Cfpa {
+        dest_cfpa: PathBuf,
+
+        #[clap(long, default_value = "enabled")]
+        rkth0: RKTHState,
+
+        #[clap(long, default_value = "disabled")]
+        rkth1: RKTHState,
+
+        #[clap(long, default_value = "disabled")]
+        rkth2: RKTHState,
+
+        #[clap(long, default_value = "disabled")]
+        rkth3: RKTHState,
+    },
     /// Generate a secure signed image
     SignImage {
         #[clap(flatten)]
@@ -194,18 +215,30 @@ fn main() -> Result<()> {
             )?;
             info!("CMPA written to {}", dest_cmpa.display());
         }
-        Command::Cfpa { dest_cfpa } => {
+        Command::Cfpa {
+            dest_cfpa,
+            rkth0,
+            rkth1,
+            rkth2,
+            rkth3,
+        } => {
             let debug_settings = DebugSettings::default();
+
+            let rotkey_status_for_rkth_state = |x| match x {
+                RKTHState::Disabled => ROTKeyStatus::Invalid,
+                RKTHState::Enabled => ROTKeyStatus::Enabled,
+                RKTHState::Revoked => ROTKeyStatus::Revoked1,
+            };
+
             std::fs::write(
                 &dest_cfpa,
                 signed_image::generate_cfpa(
                     debug_settings,
-                    // TODO: allow for user control of certificates
                     [
-                        ROTKeyStatus::enabled(),
-                        ROTKeyStatus::invalid(),
-                        ROTKeyStatus::invalid(),
-                        ROTKeyStatus::invalid(),
+                        rotkey_status_for_rkth_state(rkth0),
+                        rotkey_status_for_rkth_state(rkth1),
+                        rotkey_status_for_rkth_state(rkth2),
+                        rotkey_status_for_rkth_state(rkth3),
                     ],
                 )?
                 .to_vec()?,
