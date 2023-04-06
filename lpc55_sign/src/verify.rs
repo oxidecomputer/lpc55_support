@@ -149,6 +149,15 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
     // TODO: decide if we want to check CFPA digest
 
     if secure_boot_enabled {
+        let at_least_one_rtkh_slot_enabled = (rkth_revoke.rotk0 == ROTKeyStatus::Enabled)
+            | (rkth_revoke.rotk1 == ROTKeyStatus::Enabled)
+            | (rkth_revoke.rotk2 == ROTKeyStatus::Enabled)
+            | (rkth_revoke.rotk3 == ROTKeyStatus::Enabled);
+        if !at_least_one_rtkh_slot_enabled {
+            error!("Secure boot enabled but no RTKH table slots are enabled");
+            failed = true;
+        }
+
         if (cfpa.dcfg_cc_socu_ns_pin >> 16) as u16 != (!cfpa.dcfg_cc_socu_ns_pin & 0xFFFF) as u16 {
             error!(
                 "CFPA.DCFG_CC_SOCU_NS_PIN is invalid {:08x}; the top and \
@@ -188,7 +197,7 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
             okay!("CFPA.CDFG_CC_SOCU_NS_DFLT,PIN are compatible");
         }
     } else {
-        okay!("Secure boot is disabled; ignoring CFPA.DCFG_CC_SOCU_NS_*");
+        okay!("Secure boot is disabled; ignoring CFPA.DCFG_CC_SOCU_NS_* and RTKH revocation");
     }
 
     let cfpa_image_key_revoke = (cfpa.image_key_revoke & 0xFFFF) as u16;
