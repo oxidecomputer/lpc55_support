@@ -376,6 +376,14 @@ impl SecureBootCfg {
             self.sec_boot_en = SecBootStatus::SignedImage3;
         }
     }
+
+    pub fn set_rsa_4k(&mut self, rsa4k: bool) {
+        self.rsa4k = if rsa4k {
+            RSA4KStatus::RSA4096Only1
+        } else {
+            RSA4KStatus::RSA2048Keys
+        }
+    }
 }
 
 impl Default for SecureBootCfg {

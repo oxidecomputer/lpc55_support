@@ -196,6 +196,7 @@ pub fn generate_cmpa(
     boot_error_pin: BootErrorPin,
     rotkh: [u8; 32],
     lock: bool,
+    use_rsa_4096: bool
 ) -> Result<CMPAPage, Error> {
     if dice.with_dice && !enable_secure_boot {
         return Err(Error::DiceWithoutSecureBoot);
@@ -207,6 +208,7 @@ pub fn generate_cmpa(
     secure_boot_cfg.set_dice_inc_cust_cfg(dice.with_dice_cust_cfg);
     secure_boot_cfg.set_dice_inc_sec_epoch(dice.with_dice_inc_sec_epoch);
     secure_boot_cfg.set_sec_boot(enable_secure_boot);
+    secure_boot_cfg.set_rsa_4k(use_rsa_4096);
 
     let mut cmpa = CMPAPage::new();
     cmpa.set_secure_boot_cfg(secure_boot_cfg)?;
