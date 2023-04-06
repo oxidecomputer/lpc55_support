@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+pub mod cert;
 pub mod crc_image;
 pub mod signed_image;
 pub mod verify;
@@ -55,4 +56,7 @@ pub enum Error {
 
     #[error("public keys have varying sizes (must all be 2048 or 4096 bit)")]
     VaryingPublicKeySizes,
+
+    #[error("certificate with subject {subject} uses unsupported signature algorithm {algorithm}. Only sha256WithRSAEncryption is supported.")]
+    UnsupportedCertificateSignatureAlgorithm { subject: String, algorithm: String },
 }
