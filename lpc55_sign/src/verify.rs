@@ -6,8 +6,8 @@ use crate::Error;
 use hex::ToHex as _;
 use log::{debug as okay, error, info, trace, warn};
 use lpc55_areas::{
-    BootField, BootImageType, CFPAPage, CMPAPage, CertHeader, ROTKeyStatus, SecBootStatus,
-    TZMImageStatus, TzmImageType, TzmPreset,
+    BootField, BootImageType, CFPAPage, CMPAPage, CertHeader, ROTKeyStatus, RSA4KStatus,
+    SecBootStatus, TZMImageStatus, TzmImageType, TzmPreset,
 };
 use packed_struct::{EnumCatchAll, PackedStruct};
 use rsa::{pkcs1::DecodeRsaPublicKey, signature::Verifier, PublicKeyParts};
@@ -368,6 +368,25 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
             "    Issuer:\n      {}",
             cert.issuer().to_string().replace(", ", "\n      ")
         );
+
+        let cmpa_rsa4k = cmpa.get_secure_boot_cfg()?.rsa4k;
+
+        let public_key_bits = rsa::RsaPublicKey::from_pkcs1_der(
+            cert.tbs_certificate.subject_pki.subject_public_key.as_ref(),
+        )
+        .unwrap()
+        .size() * 8;
+
+        if !matches!(
+            (cmpa_rsa4k, public_key_bits),
+            (RSA4KStatus::RSA2048Keys, 2048)
+                | (RSA4KStatus::RSA4096Only1, 4096)
+                | (RSA4KStatus::RSA4096Only2, 4096)
+                | (RSA4KStatus::RSA4096Only3, 4096)
+        ) {
+            error!("    Certificate public key size ({public_key_bits} bits) does not match CMPA config ({cmpa_rsa4k:?})");
+            failed = true;
+        }
 
         let prev_public_key = certs.last().map(|prev| prev.public_key());
         let kind = if prev_public_key.is_some() {
