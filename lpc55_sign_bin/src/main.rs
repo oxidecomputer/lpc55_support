@@ -36,6 +36,9 @@ enum Command {
     },
     /// Generate a CPFA bin with default debug settings
     Cmpa {
+        #[clap(long)]
+        without_secure_boot: bool,
+
         #[clap(flatten)]
         dice_args: DiceArgs,
 
@@ -143,6 +146,7 @@ fn main() -> Result<()> {
         }
         Command::Cmpa {
             dest_cmpa,
+            without_secure_boot,
             dice_args,
             certs,
             boot_err_pin,
@@ -176,7 +180,7 @@ fn main() -> Result<()> {
                 &dest_cmpa,
                 signed_image::generate_cmpa(
                     dice_args,
-                    true,
+                    !without_secure_boot,
                     debug_settings,
                     DefaultIsp::Auto,
                     BootSpeed::Fro96mhz,
