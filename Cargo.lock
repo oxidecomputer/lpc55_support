@@ -486,7 +486,9 @@ dependencies = [
  "log",
  "lpc55_areas",
  "lpc55_sign",
+ "rsa",
  "toml",
+ "x509-parser",
 ]
 
 [[package]]

@@ -13,7 +13,9 @@ env_logger.workspace = true
 log.workspace = true
 lpc55_areas.workspace = true
 lpc55_sign = { workspace = true, features = ["clap"] }
+rsa.workspace = true
 toml.workspace = true
+x509-parser.workspace = true
 
 [[bin]]
 name = "lpc55_sign"
