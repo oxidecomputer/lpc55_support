@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::Error;
+use crate::{cert, Error};
 use hex::ToHex as _;
 use log::{debug as okay, error, info, trace, warn};
 use lpc55_areas::{
@@ -386,6 +386,14 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
                 | (RSA4KStatus::RSA4096Only3, 4096)
         ) {
             error!("    Certificate public key size ({public_key_bits} bits) does not match CMPA config ({cmpa_rsa4k:?})");
+            failed = true;
+        }
+
+        if !cert::uses_supported_signature_algorithm(&cert) {
+            error!(
+                "    Unsupported signature algorithm: {}. Only sha256WithRSAEncryption is supported.",
+                cert::signature_algorithm_name(&cert)
+            );
             failed = true;
         }
 

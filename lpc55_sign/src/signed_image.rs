@@ -4,7 +4,7 @@
 
 use std::{convert::TryInto, path::PathBuf};
 
-use crate::Error;
+use crate::{cert, Error};
 use byteorder::{ByteOrder, LittleEndian};
 use lpc55_areas::*;
 use packed_struct::prelude::*;
@@ -169,6 +169,14 @@ pub fn root_key_hash(root: &[u8]) -> Result<[u8; 32], Error> {
         Ok([0; 32])
     } else {
         let (_, root_cert) = parse_x509_certificate(root)?;
+
+        if !cert::uses_supported_signature_algorithm(&root_cert) {
+            return Err(Error::UnsupportedCertificateSignatureAlgorithm {
+                subject: root_cert.subject().to_string(),
+                algorithm: cert::signature_algorithm_name(&root_cert),
+            });
+        }
+
         let root_key = root_cert.public_key().subject_public_key.as_ref();
         let root_key = RsaPublicKey::from_pkcs1_der(root_key)?;
         let mut hash = Sha256::new();
