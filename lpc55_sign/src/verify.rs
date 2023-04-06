@@ -93,6 +93,11 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
         okay!("CMPA digest is all 0s (unlocked)");
     }
     if secure_boot_enabled {
+        if cmpa.rotkh == [0u8; 32] {
+            error!("Secure boot is enabled but ROTKH is all zeros which implies no root certs are configured");
+            failed = true;
+        }
+
         if (!cmpa.cc_socu_pin >> 16) as u16 != cmpa.cc_socu_pin as u16 {
             error!(
                 "CMPA.CC_SOCU_PIN is invalid {:08x}; the top and bottom u16s \
@@ -129,7 +134,7 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
             okay!("CMPA.CC_SOCU_DFLT,PIN are compatible");
         }
     } else {
-        okay!("Secure boot is disabled; not checking CMPA.CC_SOCU_*");
+        okay!("Secure boot is disabled; not checking CMPA.CC_SOCU_* or ROTKH");
     }
 
     info!("=== CFPA ====");
