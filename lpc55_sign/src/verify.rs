@@ -4,7 +4,7 @@
 
 use crate::{cert, Error};
 use hex::ToHex as _;
-use log::{debug as okay, error, info, trace, warn};
+use log::{debug as okay, info, trace, warn};
 use lpc55_areas::{
     BootField, BootImageType, CFPAPage, CMPAPage, CertHeader, ROTKeyStatus, RSA4KStatus,
     SecBootStatus, TZMImageStatus, TzmImageType, TzmPreset,
@@ -16,6 +16,13 @@ use std::io::Write as _;
 
 fn is_uniary(val: u16) -> bool {
     (val + 1).is_power_of_two()
+}
+
+macro_rules! error {
+    ($failed:ident, $($arg:tt)*) => {
+        $failed = true;
+        log::error!($($arg)*);
+    }
 }
 
 /// Initializes a logger that pretty-prints logging from `verify_image`
@@ -84,8 +91,7 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
         cmpa_sha.update(&cmpa_bytes[0..cmpa_bytes.len() - 32]);
         let expected_hash: [u8; 32] = cmpa_sha.finalize().into();
         if expected_hash != cmpa.sha256_digest {
-            error!("CMPA digest does not match expected hash");
-            failed = true;
+            error!(failed, "CMPA digest does not match expected hash");
         } else {
             okay!("CMPA digest matches expected hash");
         }
@@ -94,27 +100,26 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
     }
     if secure_boot_enabled {
         if cmpa.rotkh == [0u8; 32] {
-            error!("Secure boot is enabled but ROTKH is all zeros which implies no root certs are configured");
-            failed = true;
+            error!(failed, "Secure boot is enabled but ROTKH is all zeros which implies no root certs are configured");
         }
 
         if (!cmpa.cc_socu_pin >> 16) as u16 != cmpa.cc_socu_pin as u16 {
             error!(
+                failed,
                 "CMPA.CC_SOCU_PIN is invalid {:08x}; the top and bottom u16s \
                  must be inverses of each other",
                 cmpa.cc_socu_pin
             );
-            failed = true;
         } else {
             okay!("CMPA.CC_SOCU_PIN is valid");
         }
         if (!cmpa.cc_socu_dflt >> 16) as u16 != cmpa.cc_socu_dflt as u16 {
             error!(
+                failed,
                 "CMPA.CC_SOCU_DFLT is invalid {:08x}; the top and bottom u16s \
                  must be inverses of each other",
                 cmpa.cc_socu_dflt
             );
-            failed = true;
         } else {
             okay!("CMPA.CC_SOCU_DFLT is valid");
         }
@@ -122,10 +127,10 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
         for i in 0..16 {
             if cmpa.cc_socu_dflt & (1 << i) != 0 && cmpa.cc_socu_pin & (1 << i) == 0 {
                 error!(
+                    any_cc_error,
                     "Illegal configuration: bit {i} of CMPA.CC_SOCU_* is set \
                      in CC_SOCU_DFLT but unset in CC_SOCU_PIN"
                 );
-                any_cc_error = true;
             }
         }
         if any_cc_error {
@@ -154,28 +159,30 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
             | (rkth_revoke.rotk2 == ROTKeyStatus::Enabled)
             | (rkth_revoke.rotk3 == ROTKeyStatus::Enabled);
         if !at_least_one_rtkh_slot_enabled {
-            error!("Secure boot enabled but no RTKH table slots are enabled");
-            failed = true;
+            error!(
+                failed,
+                "Secure boot enabled but no RTKH table slots are enabled"
+            );
         }
 
         if (cfpa.dcfg_cc_socu_ns_pin >> 16) as u16 != (!cfpa.dcfg_cc_socu_ns_pin & 0xFFFF) as u16 {
             error!(
+                failed,
                 "CFPA.DCFG_CC_SOCU_NS_PIN is invalid {:08x}; the top and \
                  bottom u16s must be inverses of each other",
                 cfpa.dcfg_cc_socu_ns_pin
             );
-            failed = true;
         } else {
             okay!("CFPA.DCFG_CC_SOCU_NS_PIN is valid");
         }
         if (cfpa.dcfg_cc_socu_ns_dflt >> 16) as u16 != (!cfpa.dcfg_cc_socu_ns_dflt & 0xFFFF) as u16
         {
             error!(
+                failed,
                 "CFPA.DCFG_CC_SOCU_NS_DFLT is invalid {:08x}; the top and \
                  bottom u16s must be inverses of each other",
                 cfpa.dcfg_cc_socu_ns_dflt
             );
-            failed = true;
         } else {
             okay!("CFPA.DCFG_CC_SOCU_NS_DFLT is valid");
         }
@@ -184,11 +191,11 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
             if cfpa.dcfg_cc_socu_ns_dflt & (1 << i) != 0 && cfpa.dcfg_cc_socu_ns_pin & (1 << i) == 0
             {
                 error!(
+                    any_cc_error,
                     "Illegal configuration: bit {i} of CFPA.DCFG_CC_SOCU_NS* \
                      is set in DCFG_CC_SOCU_NS_DFLT but unset in \
                      DCFG_CC_SOCU_NS_PIN"
                 );
-                any_cc_error = true;
             }
         }
         if any_cc_error {
@@ -244,8 +251,10 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
     match secure_boot_cfg.tzm_image_type {
         TZMImageStatus::PresetTZM => {
             if image_type.tzm_preset == TzmPreset::NotPresent {
-                error!("    CFPA requires TZ preset, but image header says it is not present");
-                failed = true;
+                error!(
+                    failed,
+                    "    CFPA requires TZ preset, but image header says it is not present"
+                );
             } else {
                 todo!("don't yet know how to decode TZ preset");
             }
@@ -263,19 +272,25 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
         }
         TZMImageStatus::DisableTZM => {
             if image_type.tzm_image_type == TzmImageType::Enabled {
-                error!("    CFPA requires TZ disabled, but image header says it is enabled");
-                failed = true;
+                error!(
+                    failed,
+                    "    CFPA requires TZ disabled, but image header says it is enabled"
+                );
             } else if image_type.tzm_preset == TzmPreset::Present {
-                error!("    CFPA requires TZ disabled, but image header has tzm_preset");
-                failed = true;
+                error!(
+                    failed,
+                    "    CFPA requires TZ disabled, but image header has tzm_preset"
+                );
             } else {
                 okay!("    TZM disabled in CMPA and in image header");
             }
         }
         TZMImageStatus::EnableTZM => {
             if image_type.tzm_image_type == TzmImageType::Disabled {
-                error!("    CFPA requires TZ enabled, but image header says it is disabled");
-                failed = true;
+                error!(
+                    failed,
+                    "    CFPA requires TZ enabled, but image header says it is disabled"
+                );
             } else if image_type.tzm_preset == TzmPreset::Present {
                 todo!("don't yet know how to decode TZ preset");
             } else {
@@ -290,15 +305,19 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
         }
         EnumCatchAll::Enum(BootImageType::CRCImage) => {
             if secure_boot_enabled {
-                error!("Secure boot enabled in CPFA, but this is a CRC image");
-                failed = true;
+                error!(
+                    failed,
+                    "Secure boot enabled in CPFA, but this is a CRC image"
+                );
             }
             failed |= check_crc_image(image)?
         }
         EnumCatchAll::Enum(BootImageType::PlainImage) => {
             if secure_boot_enabled {
-                error!("Secure boot enabled in CPFA, but this is a plain image");
-                failed = true;
+                error!(
+                    failed,
+                    "Secure boot enabled in CPFA, but this is a plain image"
+                );
             }
             failed |= check_plain_image(image)?
         }
@@ -327,8 +346,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
     trace!("data.len(): {:#x}", image.len());
 
     if cert_header.signature != *b"cert" {
-        error!("Certificate header does not begin with 'cert'");
-        failed = true;
+        error!(failed, "Certificate header does not begin with 'cert'");
     } else {
         okay!("Verified certificate header signature ('cert')");
     }
@@ -337,10 +355,10 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
         header_offset + cert_header.header_length + cert_header.certificate_table_len + 32 * 4;
     if cert_header.total_image_len != expected_len {
         error!(
+            failed,
             "Invalid image length in cert header: expected {expected_len}, got {}",
             cert_header.total_image_len
         );
-        failed = true;
     } else {
         okay!("Verified certificate header length");
     }
@@ -385,8 +403,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
                 | (RSA4KStatus::RSA4096Only2, 4096)
                 | (RSA4KStatus::RSA4096Only3, 4096)
         ) {
-            error!("    Certificate public key size ({public_key_bits} bits) does not match CMPA config ({cmpa_rsa4k:?})");
-            failed = true;
+            error!(failed, "    Certificate public key size ({public_key_bits} bits) does not match CMPA config ({cmpa_rsa4k:?})");
         }
 
         if !cert::uses_supported_signature_algorithm(&cert) {
@@ -409,8 +426,10 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
         match cert.verify_signature(prev_public_key) {
             Ok(()) => okay!("    Verified {kind} certificate signature"),
             Err(e) => {
-                error!("    Failed to verify {kind} certificate signature: {e:?}");
-                failed = true
+                error!(
+                    failed,
+                    "    Failed to verify {kind} certificate signature: {e:?}"
+                );
             }
         }
 
@@ -430,8 +449,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
     }
 
     if rkh_sha.finalize().as_slice() != cmpa.rotkh {
-        error!("ROTKH in CMPA does not match RKH table in image");
-        failed = true;
+        error!(failed, "ROTKH in CMPA does not match RKH table in image");
     } else {
         okay!("ROTKH in CMPA matches RKH table in image");
     }
@@ -454,20 +472,17 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
         };
         match rotk_status {
             ROTKeyStatus::Invalid => {
-                error!("RKH table slot {index} is disabled in CFPA");
-                failed = true;
+                error!(failed, "RKH table slot {index} is disabled in CFPA");
             }
             ROTKeyStatus::Enabled => {
                 okay!("RKH table slot {index} is enabled in CFPA");
             }
             ROTKeyStatus::Revoked1 | ROTKeyStatus::Revoked2 => {
-                error!("RKH table slot {index} has been revoked in CFPA");
-                failed = true;
+                error!(failed, "RKH table slot {index} has been revoked in CFPA");
             }
         }
     } else {
-        error!("Root certificate's public key is not in RKH table");
-        failed = true;
+        error!(failed, "Root certificate's public key is not in RKH table");
     }
 
     let last_cert = &certs.last().unwrap();
@@ -476,10 +491,10 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
     let last_cert_sn_magic = &last_cert_sn[0..2];
     if last_cert_sn_magic != [0x3c, 0xc3] {
         error!(
+            failed,
             "Last certificate's serial number has wrong magic prefix.  Expected 0x3cc3.  Found 0x{}",
             last_cert_sn_magic.encode_hex::<String>()
         );
-        failed = true;
     } else {
         okay!("Verified last certificate's serial number has correct magic prefix");
     }
@@ -500,9 +515,9 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
         ),
         _ => {
             error!(
+                failed,
                 "Last certificate's revocation ID (0x{last_cert_sn_revoke_id:04x}) does not match CFPA IMAGE_KEY_REVOKE (0x{cfpa_image_key_revoke:04x})"
             );
-            failed = true;
         }
     }
 
@@ -515,8 +530,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
     match verifying_key.verify(&image[..start], &signature) {
         Ok(()) => okay!("Verified image signature against last certificate"),
         Err(e) => {
-            error!("Failed to verify signature: {e:?}");
-            failed = true;
+            error!(failed, "Failed to verify signature: {e:?}");
         }
     }
     Ok(failed)
@@ -532,8 +546,7 @@ fn check_crc_image(image: &[u8]) -> Result<bool, Error> {
     if expected == actual {
         okay!("CRC32 matches");
     } else {
-        error!("CRC32 does not match");
-        failed = true;
+        error!(failed, "CRC32 does not match");
     }
     Ok(failed)
 }
