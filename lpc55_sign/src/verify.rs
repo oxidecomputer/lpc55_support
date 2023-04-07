@@ -407,11 +407,10 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
         }
 
         if !cert::uses_supported_signature_algorithm(&cert) {
-            error!(
+            error!(failed,
                 "    Unsupported signature algorithm: {}. Only sha256WithRSAEncryption is supported.",
                 cert::signature_algorithm_name(&cert)
             );
-            failed = true;
         }
 
         let prev_public_key = certs.last().map(|prev| prev.public_key());
