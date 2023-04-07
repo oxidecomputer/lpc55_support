@@ -234,10 +234,20 @@ fn main() -> Result<()> {
         } => {
             let debug_settings = DebugSettings::default();
 
+            //  NXP ROM only allows the revocation fields to have 0->1
+            //  transitions for each individual bit.  Each slot starts in
+            //  Invalid (0b00) where the table slot is not considered for use.
+            //  Normal lifecycle enables a slot's key by transitioning to
+            //  Enabled (0b01).  Revoking a key can happen via two different
+            //  states: Revoke1 and Revoke2. Enabled -> Revoke1 is invalid as it
+            //  would require setting the low bit 1->0. Instead, revocation
+            //  happens by going to Revoke2 (0b11).  Revoke1 should really never
+            //  be used as the only path it can be used on is Invalid -> Revoke1
+            //  -> Revoke2
             let rotkey_status_for_rkth_state = |x| match x {
                 RKTHState::Disabled => ROTKeyStatus::Invalid,
                 RKTHState::Enabled => ROTKeyStatus::Enabled,
-                RKTHState::Revoked => ROTKeyStatus::Revoked1,
+                RKTHState::Revoked => ROTKeyStatus::Revoked2,
             };
 
             std::fs::write(
