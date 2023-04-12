@@ -88,6 +88,9 @@ enum Command {
 
         #[clap(long, default_value = "disabled")]
         rkth3: RKTHState,
+
+        #[clap(long, default_value_t = 0)]
+        image_key_revoke: u16,
     },
     /// Generate a secure signed image
     SignImage {
@@ -231,6 +234,7 @@ fn main() -> Result<()> {
             rkth1,
             rkth2,
             rkth3,
+            image_key_revoke,
         } => {
             let debug_settings = DebugSettings::default();
 
@@ -260,6 +264,7 @@ fn main() -> Result<()> {
                         rotkey_status_for_rkth_state(rkth2),
                         rotkey_status_for_rkth_state(rkth3),
                     ],
+                    image_key_revoke,
                 )?
                 .to_vec()?,
             )?;

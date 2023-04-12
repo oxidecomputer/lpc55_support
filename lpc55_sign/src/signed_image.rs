@@ -256,9 +256,15 @@ pub fn generate_cmpa(
 pub fn generate_cfpa(
     settings: DebugSettings,
     revoke: [ROTKeyStatus; 4],
+    image_key_revoke: u16,
 ) -> Result<CFPAPage, Error> {
+    if !crate::is_uniary(image_key_revoke) {
+        return Err(Error::NonUniaryImageKeyRevoke(image_key_revoke));
+    }
+
     let mut cfpa = CFPAPage::default();
     cfpa.version += 1; // allow overwrite of default 0
+    cfpa.image_key_revoke = image_key_revoke as u32;
 
     let mut rkth = RKTHRevoke::new();
     rkth.rotk0 = revoke[0];
