@@ -132,8 +132,8 @@ impl CertArgs {
         if (self.private_key.is_none() || self.root_cert.is_none()) && self.cert_cfg.is_none() {
             bail!("must provide either root-cert + private-key, or cert-cfg")
         } else if let Some(s) = self.cert_cfg {
-            let cfg_contents = std::fs::read(s)?;
-            let cfg = toml::from_slice(&cfg_contents)?;
+            let cfg_contents = std::fs::read_to_string(s)?;
+            let cfg = toml::from_str(&cfg_contents)?;
             Ok(cfg)
         } else {
             let root = self.root_cert.unwrap();
