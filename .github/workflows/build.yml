@@ -32,7 +32,7 @@ jobs:
 
       # cache the cargo registry & index
       - name: Cache cargo outputs
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/registry
@@ -40,7 +40,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache vcpkg
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: C:\vcpkg\downloads
           key: ${{ runner.os }}-vcpkg-download-${{ matrix.os }}-${{ github.sha }}
@@ -50,7 +50,7 @@ jobs:
 
       # cache our build outputs
       - name: Cache build outputs
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             target
