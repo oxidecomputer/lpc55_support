@@ -8,17 +8,6 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        include:
-          - os: ubuntu-latest
-            deps: sudo apt-get update && sudo apt-get install libudev-dev binutils-arm-none-eabi
-          - os: windows-latest
-            deps: |
-              Invoke-WebRequest -Uri https://github.com/steveklabnik/arm-none-eabi-objcopy/releases/download/9-2020-q2-update/arm-none-eabi-objcopy.exe -OutFile "$Env:RUNNER_TEMP\arm-none-eabi-objcopy.exe"
-              echo $Env:RUNNER_TEMP >> $Env:GITHUB_PATH
-              echo "VCPKG_ROOT=$Env:VCPKG_INSTALLATION_ROOT" >> $Env:GITHUB_ENV
-              vcpkg install openssl:x64-windows
-    env:
-      VCPKGRS_DYNAMIC: 1
 
     steps:
       # check out our code
@@ -39,15 +28,6 @@ jobs:
             ~/.cargo/git
           key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Cache vcpkg
-        uses: actions/cache@v3
-        with:
-          path: C:\vcpkg\downloads
-          key: ${{ runner.os }}-vcpkg-download-${{ matrix.os }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-download-${{ matrix.os }}-
-            ${{ runner.os }}-vcpkg-download-
-
       # cache our build outputs
       - name: Cache build outputs
         uses: actions/cache@v3
@@ -55,9 +35,6 @@ jobs:
           path: |
             target
           key: ${{ runner.os }}-build-${{ steps.rust-toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.lock') }}
-
-      # install dependencies
-      - run: '${{ matrix.deps }}'
 
       # invoke our build
       - uses: actions-rs/cargo@v1
