@@ -199,9 +199,9 @@ dependencies = [
 
 [[package]]
 name = "crc-any"
-version = "2.4.1"
+version = "2.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "073375684a58dece169afbdc9879a027f3698118ad3814938316c6002b7aa921"
+checksum = "774646b687f63643eb0f4bf13dc263cb581c8c9e57973b6ddf78bda3994d88df"
 
 [[package]]
 name = "crypto-common"
