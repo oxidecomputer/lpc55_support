@@ -14,6 +14,7 @@ env_logger.workspace = true
 log.workspace = true
 lpc55_areas.workspace = true
 lpc55_sign = { workspace = true, features = ["clap"] }
+pem-rfc7468.workspace = true
 toml = { workspace = true, features = ["parse"] }
 x509-cert.workspace = true
 

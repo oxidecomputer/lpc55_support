@@ -47,6 +47,9 @@ pub enum Error {
     #[error("certificate decoding error: {0}")]
     DerError(#[from] der::Error),
 
+    #[error("error decoding PEM: {0}")]
+    Pem(#[from] pem_rfc7468::Error),
+
     #[error("io error: {0}")]
     IoError(#[from] std::io::Error),
 

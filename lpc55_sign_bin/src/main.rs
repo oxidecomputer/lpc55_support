@@ -330,7 +330,16 @@ fn main() -> Result<()> {
 fn read_certs(paths: &[PathBuf]) -> Result<Vec<Certificate>> {
     let mut certs = Vec::with_capacity(paths.len());
     for path in paths {
-        let der = std::fs::read(path)?;
+        let bytes = std::fs::read(path)?;
+        let der = if bytes.starts_with("-----BEGIN CERTIFICATE-----\n".as_bytes()) {
+            let (label, der) = pem_rfc7468::decode_vec(&bytes)?;
+            if label != "CERTIFICATE" {
+                bail!("unexpected label {label}");
+            }
+            der
+        } else {
+            bytes
+        };
         let cert = Certificate::from_der(&der)?;
         certs.push(cert);
     }

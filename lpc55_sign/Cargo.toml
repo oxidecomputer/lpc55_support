@@ -16,6 +16,7 @@ hex.workspace = true
 log.workspace = true
 lpc55_areas.workspace = true
 packed_struct.workspace = true
+pem-rfc7468.workspace = true
 rsa.workspace = true
 serde.workspace = true
 sha2.workspace = true

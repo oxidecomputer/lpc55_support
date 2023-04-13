@@ -436,6 +436,7 @@ dependencies = [
  "log",
  "lpc55_areas",
  "packed_struct",
+ "pem-rfc7468",
  "rsa",
  "serde",
  "sha2",
@@ -455,6 +456,7 @@ dependencies = [
  "log",
  "lpc55_areas",
  "lpc55_sign",
+ "pem-rfc7468",
  "toml",
  "x509-cert",
 ]
