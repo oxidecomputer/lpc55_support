@@ -515,10 +515,10 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
         }
     }
 
+    trace!("signature length: {}", image.len() - start);
     let public_key_rsa = cert::public_key(certs.last().unwrap())?;
-    let signature = Signature::try_from(&image[start..]).unwrap();
-    trace!("signature length: {}", signature.as_ref().len());
-    match verify_signature(public_key_rsa, &image[..start], &signature) {
+    let signature = &Signature::try_from(&image[start..]).unwrap();
+    match verify_signature(public_key_rsa, &image[..start], signature) {
         Ok(()) => okay!("Verified image signature against last certificate"),
         Err(e) => {
             error!(failed, "Failed to verify signature: {e:?}");
@@ -562,6 +562,6 @@ fn verify_signature(
     message: &[u8],
     signature: &Signature,
 ) -> Result<(), Error> {
-    let verifying_key = VerifyingKey::<Sha256>::new_with_prefix(public_key);
+    let verifying_key = VerifyingKey::<Sha256>::new(public_key);
     Ok(verifying_key.verify(message, signature)?)
 }
