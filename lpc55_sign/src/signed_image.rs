@@ -258,8 +258,8 @@ pub fn generate_cfpa(
     revoke: [ROTKeyStatus; 4],
     image_key_revoke: u16,
 ) -> Result<CFPAPage, Error> {
-    if !crate::is_uniary(image_key_revoke) {
-        return Err(Error::NonUniaryImageKeyRevoke(image_key_revoke));
+    if !crate::is_unary(image_key_revoke) {
+        return Err(Error::NonUnaryImageKeyRevoke(image_key_revoke));
     }
 
     let mut cfpa = CFPAPage::default();
