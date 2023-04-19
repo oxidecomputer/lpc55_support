@@ -8,7 +8,32 @@ pub mod signed_image;
 pub mod verify;
 
 fn is_unary(val: u16) -> bool {
-    (val + 1).is_power_of_two()
+    // There are multiple ways to test this:
+    // * `val.leading_zeros() + val.trailing_ones() == 16`
+    // * checked_add(1).is_power_of_2()
+    // * wrapping addition and masking
+    //
+    // Wrapping addition and masking generates the shortest instruction
+    // sequence.  For `x & (x+1)` to equal zero, x and (x+1) must have no bits
+    // in common. That only occurs when (x+1) is a power of 2 and thus x is
+    // 2^y-1 which is a unary number. Wrapping addition is needed for u16::MAX
+    // as all bits are set and thus (x+1) must have all bits clear.
+    val & val.wrapping_add(1) == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::is_unary;
+
+    #[test]
+    fn test_is_unary() {
+        for val in 0..=u16::MAX {
+            assert_eq!(
+                is_unary(val),
+                (val.leading_zeros() + val.trailing_ones() == 16)
+            )
+        }
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
