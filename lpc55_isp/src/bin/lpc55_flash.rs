@@ -59,6 +59,8 @@ enum ISPCommand {
     },
     /// Save the CFPA region to a file
     ReadCFPA {
+        #[clap(short, long)]
+        page: Option<CfpaChoice>,
         file: PathBuf,
     },
     /// Write the CFPA region from the contents of a file.
@@ -98,6 +100,13 @@ enum ISPCommand {
         prop: BootloaderProperty,
     },
     LastError,
+}
+
+#[derive(Copy, Clone, Debug, clap::ValueEnum)]
+enum CfpaChoice {
+    Scratch,
+    Ping,
+    Pong,
 }
 
 #[derive(Debug, Parser)]
@@ -341,10 +350,37 @@ fn main() -> Result<()> {
             out.write_all(&m)?;
             eprintln!("CMPA Output written to {:?}", file);
         }
-        ISPCommand::ReadCFPA { file } => {
+        ISPCommand::ReadCFPA { page, file } => {
             do_ping(&mut *port)?;
 
-            let m = do_isp_read_memory(&mut *port, 0x9de00, 512)?;
+            let data = if let Some(page) = page {
+                // Only read one page as requested
+                let addr = match page {
+                    CfpaChoice::Scratch => 0x9de00,
+                    CfpaChoice::Ping => 0x9e000,
+                    CfpaChoice::Pong => 0x9e200,
+                };
+                do_isp_read_memory(&mut *port, addr, 512)?
+            } else {
+                // Read ping and pong pages and only write out the latest one.
+                let ping = do_isp_read_memory(&mut *port, 0x9e000, 512)
+                    .context("reading CFPA ping page")?;
+                let pong = do_isp_read_memory(&mut *port, 0x9e200, 512)
+                    .context("reading CFPA pong page")?;
+                let ping_d = lpc55_areas::CFPAPage::from_bytes(ping[..].try_into().unwrap())?;
+                let pong_d = lpc55_areas::CFPAPage::from_bytes(pong[..].try_into().unwrap())?;
+                println!(
+                    "CFPA versions: ping={}, pong={}",
+                    ping_d.version, pong_d.version
+                );
+                if ping_d.version > pong_d.version {
+                    println!("choosing ping");
+                    ping
+                } else {
+                    println!("choosing pong");
+                    pong
+                }
+            };
 
             let mut out = std::fs::OpenOptions::new()
                 .write(true)
@@ -352,8 +388,8 @@ fn main() -> Result<()> {
                 .create(true)
                 .open(&file)?;
 
-            out.write_all(&m)?;
-            println!("CFPA Output written to {:?}", file);
+            out.write_all(&data)?;
+            println!("CFPA written to {file:?}");
         }
         ISPCommand::WriteCFPA {
             update_version,
