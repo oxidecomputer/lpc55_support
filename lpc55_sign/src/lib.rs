@@ -7,7 +7,7 @@ pub mod crc_image;
 pub mod signed_image;
 pub mod verify;
 
-fn is_uniary(val: u16) -> bool {
+fn is_unary(val: u16) -> bool {
     (val + 1).is_power_of_two()
 }
 
@@ -64,6 +64,6 @@ pub enum Error {
     #[error("certificate with subject {subject} uses unsupported signature algorithm {algorithm}. Only sha256WithRSAEncryption is supported.")]
     UnsupportedCertificateSignatureAlgorithm { subject: String, algorithm: String },
 
-    #[error("attempt to use non-uniary IMAGE_KEY_REVOKE in CFPA")]
-    NonUniaryImageKeyRevoke(u16),
+    #[error("attempt to use non-unary IMAGE_KEY_REVOKE in CFPA")]
+    NonUnaryImageKeyRevoke(u16),
 }
