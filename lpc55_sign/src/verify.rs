@@ -5,7 +5,7 @@
 use crate::{cert, Error};
 use der::Encode as _;
 use hex::ToHex as _;
-use log::{debug as okay, error, info, trace, warn};
+use log::{debug as okay, info, trace, warn};
 use lpc55_areas::{
     BootField, BootImageType, CFPAPage, CMPAPage, CertHeader, ROTKeyStatus, RSA4KStatus,
     SecBootStatus, TZMImageStatus, TzmImageType, TzmPreset,
