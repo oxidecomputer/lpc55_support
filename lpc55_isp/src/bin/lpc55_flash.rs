@@ -8,7 +8,7 @@ use clap::Parser;
 use lpc55_isp::cmd::*;
 use lpc55_isp::isp::{do_ping, BootloaderProperty, KeyType};
 use serialport::{DataBits, FlowControl, Parity, StopBits};
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -236,13 +236,42 @@ fn main() -> Result<()> {
 
     // The target _technically_ has autobaud but it's very flaky
     // and these seem to be the preferred settings
+    //
+    // We initially set the timeout short so we can drain the incoming buffer in
+    // a portable manner below. We'll adjust it up after that.
     let mut port = serialport::new(&cmd.port, cmd.baud_rate)
-        .timeout(Duration::from_millis(1000))
+        .timeout(Duration::from_millis(100))
         .data_bits(DataBits::Eight)
         .flow_control(FlowControl::None)
         .parity(Parity::None)
         .stop_bits(StopBits::One)
         .open()?;
+
+    // Extract any bytes left over in the serial port driver from previous
+    // interaction.
+    loop {
+        let mut throwaway = [0; 16];
+        match port.read(&mut throwaway) {
+            Ok(0) => {
+                // This should only happen on nonblocking reads, which we
+                // haven't asked for, but it does mean the buffer is empty so
+                // treat it as success.
+                break;
+            }
+            Ok(_) => {
+                // We've collected some characters to throw away, keep going.
+            }
+            Err(e) if e.kind() == ErrorKind::TimedOut => {
+                // Buffer is empty!
+                break;
+            }
+            Err(e) => {
+                return Err(e.into());
+            }
+        }
+    }
+    // Crank the timeout back up.
+    port.set_timeout(Duration::from_secs(1))?;
 
     match cmd.cmd {
         ISPCommand::Ping => {
