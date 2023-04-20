@@ -3,7 +3,28 @@ use const_oid;
 use der::{Decode as _, Encode as _, Reader as _};
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::RsaPublicKey;
+use std::path::PathBuf;
 use x509_cert::Certificate;
+
+/// Read and parse X.509 certificates from DER or PEM encoded files.
+pub fn read_certs(paths: &[PathBuf]) -> Result<Vec<Certificate>, Error> {
+    let mut certs = Vec::with_capacity(paths.len());
+    for path in paths {
+        let bytes = std::fs::read(path)?;
+        let der = if bytes.starts_with("-----BEGIN CERTIFICATE-----\n".as_bytes()) {
+            let (label, der) = pem_rfc7468::decode_vec(&bytes)?;
+            if label != "CERTIFICATE" {
+                return Err(Error::PemLabel(label.to_string()));
+            }
+            der
+        } else {
+            bytes
+        };
+        let cert = Certificate::from_der(&der)?;
+        certs.push(cert);
+    }
+    Ok(certs)
+}
 
 /// `Certificate::from_der` uses a `der::SliceReader`, which returns
 /// an error if the slice is larger than the DER message it contains.

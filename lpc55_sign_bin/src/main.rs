@@ -5,18 +5,17 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use colored::Colorize;
-use der::Decode as _;
 use log::info;
 use lpc55_areas::{
     BootErrorPin, BootSpeed, CFPAPage, CMPAPage, DebugSettings, DefaultIsp, ROTKeyStatus,
 };
 use lpc55_sign::{
+    cert::read_certs,
     crc_image,
     signed_image::{self, pad_roots, CertConfig, DiceArgs},
 };
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use x509_cert::Certificate;
 
 #[derive(Debug, Parser)]
 struct ImageArgs {
@@ -325,23 +324,4 @@ fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn read_certs(paths: &[PathBuf]) -> Result<Vec<Certificate>> {
-    let mut certs = Vec::with_capacity(paths.len());
-    for path in paths {
-        let bytes = std::fs::read(path)?;
-        let der = if bytes.starts_with("-----BEGIN CERTIFICATE-----\n".as_bytes()) {
-            let (label, der) = pem_rfc7468::decode_vec(&bytes)?;
-            if label != "CERTIFICATE" {
-                bail!("unexpected label {label}");
-            }
-            der
-        } else {
-            bytes
-        };
-        let cert = Certificate::from_der(&der)?;
-        certs.push(cert);
-    }
-    Ok(certs)
 }

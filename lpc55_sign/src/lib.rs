@@ -50,6 +50,9 @@ pub enum Error {
     #[error("error decoding PEM: {0}")]
     Pem(#[from] pem_rfc7468::Error),
 
+    #[error("unexpected PEM label: {0}")]
+    PemLabel(String),
+
     #[error("io error: {0}")]
     IoError(#[from] std::io::Error),
 
