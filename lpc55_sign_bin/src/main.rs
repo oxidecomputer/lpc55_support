@@ -10,8 +10,9 @@ use lpc55_areas::{
     BootErrorPin, BootSpeed, CFPAPage, CMPAPage, DebugSettings, DefaultIsp, ROTKeyStatus,
 };
 use lpc55_sign::{
+    cert::read_certs,
     crc_image,
-    signed_image::{self, CertConfig, DiceArgs},
+    signed_image::{self, pad_roots, CertConfig, DiceArgs},
 };
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -197,7 +198,7 @@ fn main() -> Result<()> {
                 }
             }
             let cfg: CertConfig = certs.try_into_config()?;
-            let root_certs = read_certs(&cfg.root_certs)?;
+            let root_certs = pad_roots(read_certs(&cfg.root_certs)?)?;
             let debug_settings = DebugSettings::default();
 
             let required_key_size = signed_image::required_key_size(&root_certs)?;
@@ -207,7 +208,7 @@ fn main() -> Result<()> {
                 Some(x) => bail!("Certificates have unsupported {x}-bit public keys"),
             };
 
-            let rotkh = signed_image::root_key_table_hash(root_certs)?;
+            let rotkh = signed_image::root_key_table_hash(&root_certs)?;
 
             std::fs::write(
                 &dest_cmpa,
@@ -323,11 +324,4 @@ fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn read_certs(paths: &[PathBuf]) -> Result<Vec<Vec<u8>>> {
-    Ok(paths
-        .iter()
-        .map(std::fs::read)
-        .collect::<Result<Vec<Vec<u8>>, _>>()?)
 }

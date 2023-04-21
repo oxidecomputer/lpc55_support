@@ -1,17 +1,60 @@
-use x509_parser::{
-    certificate::X509Certificate,
-    oid_registry::{self},
-};
+use crate::Error;
+use const_oid;
+use der::{Decode as _, Encode as _, Reader as _};
+use rsa::pkcs1::DecodeRsaPublicKey;
+use rsa::RsaPublicKey;
+use std::path::PathBuf;
+use x509_cert::Certificate;
 
-pub fn uses_supported_signature_algorithm(cert: &X509Certificate) -> bool {
-    cert.signature_algorithm.algorithm == oid_registry::OID_PKCS1_SHA256WITHRSA
+/// Read and parse X.509 certificates from DER or PEM encoded files.
+pub fn read_certs(paths: &[PathBuf]) -> Result<Vec<Certificate>, Error> {
+    let mut certs = Vec::with_capacity(paths.len());
+    for path in paths {
+        let bytes = std::fs::read(path)?;
+        let der = if bytes.starts_with("-----BEGIN CERTIFICATE-----\n".as_bytes()) {
+            let (label, der) = pem_rfc7468::decode_vec(&bytes)?;
+            if label != "CERTIFICATE" {
+                return Err(Error::PemLabel(label.to_string()));
+            }
+            der
+        } else {
+            bytes
+        };
+        let cert = Certificate::from_der(&der)?;
+        certs.push(cert);
+    }
+    Ok(certs)
 }
 
-pub fn signature_algorithm_name(cert: &X509Certificate) -> String {
-    let oid_registry = oid_registry::OidRegistry::default().with_crypto();
-    if let Some(x) = oid_registry.get(&cert.signature_algorithm.algorithm) {
-        x.sn().into()
-    } else {
-        cert.signature_algorithm.algorithm.to_string()
-    }
+/// `Certificate::from_der` uses a `der::SliceReader`, which returns
+/// an error if the slice is larger than the DER message it contains.
+/// This is a problem for certs in the LPC55 certificate table, because
+/// they are padded to a 4-byte boundary. But we can work around it by
+/// manually computing the actual length from the DER header.
+pub fn read_from_slice(bytes: &[u8]) -> Result<Certificate, Error> {
+    let reader = der::SliceReader::new(bytes)?;
+    let header = reader.peek_header()?;
+    let length = (header.encoded_len()? + header.length)?.try_into()?;
+    Ok(Certificate::from_der(&bytes[0..length])?)
+}
+
+/// Extract the RSA public key from a certificate.
+pub fn public_key(cert: &Certificate) -> Result<RsaPublicKey, Error> {
+    Ok(RsaPublicKey::from_pkcs1_der(
+        cert.tbs_certificate
+            .subject_public_key_info
+            .subject_public_key
+            .raw_bytes(),
+    )?)
+}
+
+pub fn uses_supported_signature_algorithm(cert: &Certificate) -> bool {
+    cert.signature_algorithm.oid == const_oid::db::rfc5912::SHA_256_WITH_RSA_ENCRYPTION
+}
+
+pub fn signature_algorithm_name(cert: &Certificate) -> String {
+    const_oid::db::DB
+        .by_oid(&cert.signature_algorithm.oid)
+        .map(|x| x.to_string())
+        .unwrap_or_else(|| format!("{:?}", cert.signature_algorithm.oid))
 }

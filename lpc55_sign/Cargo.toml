@@ -9,16 +9,19 @@ edition = "2021"
 byteorder.workspace = true
 clap = { workspace = true, optional = true }
 crc-any.workspace = true
+const-oid = { workspace = true, features = ["db"]}
+der.workspace = true
 env_logger.workspace = true
 hex.workspace = true
 log.workspace = true
 lpc55_areas.workspace = true
 packed_struct.workspace = true
+pem-rfc7468.workspace = true
 rsa.workspace = true
 serde.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
-x509-parser.workspace = true
+x509-cert.workspace = true
 
 [features]
 clap = ["dep:clap"]

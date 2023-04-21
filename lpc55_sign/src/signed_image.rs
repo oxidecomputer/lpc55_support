@@ -6,15 +6,13 @@ use std::{convert::TryInto, path::PathBuf};
 
 use crate::{cert, Error};
 use byteorder::{ByteOrder, LittleEndian};
+use der::Encode as _;
 use lpc55_areas::*;
 use packed_struct::prelude::*;
-use rsa::{
-    pkcs1::DecodeRsaPrivateKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePrivateKey, PublicKeyParts,
-    RsaPrivateKey, RsaPublicKey,
-};
+use rsa::{pkcs1::DecodeRsaPrivateKey, pkcs8::DecodePrivateKey, PublicKeyParts, RsaPrivateKey};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use x509_parser::parse_x509_certificate;
+use x509_cert::Certificate;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -50,18 +48,22 @@ pub struct DiceArgs {
     with_dice_inc_sec_epoch: bool,
 }
 
-fn get_pad(val: usize) -> usize {
-    match val.checked_rem(4) {
-        Some(s) if s > 0 => 4 - s,
-        _ => 0,
-    }
-}
+/// One of:
+/// - a SHA2-256 of the modulus (`n`) and exponent (`e`) of an RSA public key,
+/// - all zeros to indicate a missing root,
+/// - a SHA2-256 of four such "hashes".
+pub type Hash = [u8; 32];
 
-fn pad_roots(mut roots: Vec<Vec<u8>>) -> Result<[Vec<u8>; 4], Error> {
+/// Four root certificates, any subset of which may be missing (`None`).
+pub type RootCerts = [Option<Certificate>; 4];
+
+/// Ensure that there are exactly four root certificates.
+pub fn pad_roots(roots: Vec<Certificate>) -> Result<RootCerts, Error> {
     if roots.len() > 4 {
         return Err(Error::TooManyRoots(roots.len()));
     }
-    roots.resize_with(4, Vec::new);
+    let mut roots = roots.into_iter().map(Option::Some).collect::<Vec<_>>();
+    roots.resize_with(4, || None);
     Ok(roots.try_into().unwrap())
 }
 
@@ -71,10 +73,19 @@ fn pad_roots(mut roots: Vec<Vec<u8>>) -> Result<[Vec<u8>; 4], Error> {
 /// and the root-key-table hash.
 pub fn stamp_image(
     mut image_bytes: Vec<u8>,
-    signing_certs: Vec<Vec<u8>>,
-    root_certs: Vec<Vec<u8>>,
+    signing_certs: Vec<Certificate>,
+    root_certs: Vec<Certificate>,
     execution_address: u32,
 ) -> Result<Vec<u8>, Error> {
+    // Pad to a 4-byte boundary.
+    fn pad(val: usize) -> usize {
+        match val.checked_rem(4) {
+            Some(s) if s > 0 => 4 - s,
+            _ => 0,
+        }
+    }
+
+    // Check the certificates.
     if signing_certs.is_empty() {
         return Err(Error::NoSigningCertificate);
     }
@@ -89,10 +100,11 @@ pub fn stamp_image(
     // of each certificate.
     let mut cert_table = Vec::new();
     for cert in &signing_certs {
-        let cert_pad = get_pad(cert.len());
-        let padded_len = cert.len() + cert_pad;
+        let cert_bytes = cert.to_der()?;
+        let cert_pad = pad(cert_bytes.len());
+        let padded_len = cert_bytes.len() + cert_pad;
         cert_table.extend_from_slice(&(padded_len as u32).to_le_bytes());
-        cert_table.extend_from_slice(cert);
+        cert_table.extend_from_slice(&cert_bytes);
         cert_table.resize(cert_table.len() + cert_pad, 0);
     }
     let cert_table_len = cert_table.len();
@@ -103,15 +115,15 @@ pub fn stamp_image(
 
     // How many bytes we sign, including image, cert table, and root key hashes.
     let image_len = image_bytes.len();
-    let image_pad = get_pad(image_len);
+    let image_pad = pad(image_len);
     let signed_len = image_len + image_pad + cert_header_len + cert_table_len + 4 * 32;
     cert_header.total_image_len = signed_len
         .try_into()
         .map_err(|_| Error::SignedLengthOverflow)?;
 
     // Total image length includes the length of the eventual signature.
-    let (_, leaf) = parse_x509_certificate(signing_certs.last().unwrap())?;
-    let pub_key = RsaPublicKey::from_pkcs1_der(leaf.public_key().subject_public_key.as_ref())?;
+    let leaf = signing_certs.last().unwrap();
+    let pub_key = cert::public_key(leaf)?;
     let sig_len = pub_key.n().bits() / 8;
     let total_len = signed_len + sig_len;
 
@@ -139,7 +151,7 @@ pub fn stamp_image(
     // goes into the image and _must_ match the hash-of-hashes programmed in
     // the CMPA!
     for root in pad_roots(root_certs)? {
-        image_bytes.extend_from_slice(&root_key_hash(&root)?);
+        image_bytes.extend_from_slice(&root_key_hash(root.as_ref())?);
     }
     Ok(image_bytes)
 }
@@ -164,35 +176,10 @@ pub fn sign_image(binary: &[u8], private_key: &str) -> Result<Vec<u8>, Error> {
     Ok(signed)
 }
 
-pub fn root_key_hash(root: &[u8]) -> Result<[u8; 32], Error> {
-    if root.is_empty() {
-        Ok([0; 32])
-    } else {
-        let (_, root_cert) = parse_x509_certificate(root)?;
-
-        if !cert::uses_supported_signature_algorithm(&root_cert) {
-            return Err(Error::UnsupportedCertificateSignatureAlgorithm {
-                subject: root_cert.subject().to_string(),
-                algorithm: cert::signature_algorithm_name(&root_cert),
-            });
-        }
-
-        let root_key = root_cert.public_key().subject_public_key.as_ref();
-        let root_key = RsaPublicKey::from_pkcs1_der(root_key)?;
-        let mut hash = Sha256::new();
-        hash.update(&root_key.n().to_bytes_be());
-        hash.update(&root_key.e().to_bytes_be());
-        Ok(hash.finalize().into())
-    }
-}
-
-pub fn required_key_size(root_certs: &[Vec<u8>]) -> Result<Option<usize>, Error> {
+pub fn required_key_size(root_certs: &RootCerts) -> Result<Option<usize>, Error> {
     let mut required_key_size = None;
-    for cert in root_certs {
-        let (_, cert) = x509_parser::parse_x509_certificate(cert)?;
-        let public_key = rsa::RsaPublicKey::from_pkcs1_der(
-            cert.tbs_certificate.subject_pki.subject_public_key.as_ref(),
-        )?;
+    for cert in root_certs.iter().flatten() {
+        let public_key = cert::public_key(cert)?;
         let public_key_bits = public_key.size() * 8;
         if let Some(x) = required_key_size {
             if x != public_key_bits {
@@ -205,10 +192,29 @@ pub fn required_key_size(root_certs: &[Vec<u8>]) -> Result<Option<usize>, Error>
     Ok(required_key_size)
 }
 
-pub fn root_key_table_hash(root_certs: Vec<Vec<u8>>) -> Result<[u8; 32], Error> {
+pub fn root_key_hash(root: Option<&Certificate>) -> Result<Hash, Error> {
+    match root {
+        None => Ok([0; 32]),
+        Some(root) => {
+            if !cert::uses_supported_signature_algorithm(root) {
+                return Err(Error::UnsupportedCertificateSignatureAlgorithm {
+                    subject: root.tbs_certificate.subject.to_string(),
+                    algorithm: cert::signature_algorithm_name(root),
+                });
+            }
+            let root_key = cert::public_key(root)?;
+            let mut hash = Sha256::new();
+            hash.update(&root_key.n().to_bytes_be());
+            hash.update(&root_key.e().to_bytes_be());
+            Ok(hash.finalize().into())
+        }
+    }
+}
+
+pub fn root_key_table_hash(root_certs: &RootCerts) -> Result<Hash, Error> {
     let mut rkth = Sha256::new();
-    for root in pad_roots(root_certs)? {
-        rkth.update(root_key_hash(&root)?);
+    for root in root_certs {
+        rkth.update(root_key_hash(root.as_ref())?);
     }
     Ok(rkth.finalize().into())
 }

@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{cert, Error};
+use der::Encode as _;
 use hex::ToHex as _;
 use log::{debug as okay, info, trace, warn};
 use lpc55_areas::{
@@ -10,9 +11,14 @@ use lpc55_areas::{
     SecBootStatus, TZMImageStatus, TzmImageType, TzmPreset,
 };
 use packed_struct::{EnumCatchAll, PackedStruct};
-use rsa::{pkcs1::DecodeRsaPublicKey, signature::Verifier, PublicKeyParts};
-use sha2::Digest;
+use rsa::{
+    pkcs1v15::{Signature, VerifyingKey},
+    signature::Verifier as _,
+    PublicKeyParts, RsaPublicKey,
+};
+use sha2::{Digest as _, Sha256};
 use std::io::Write as _;
+use x509_cert::Certificate;
 
 macro_rules! error {
     ($failed:ident, $($arg:tt)*) => {
@@ -360,7 +366,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
     }
 
     let mut start = (header_offset + cert_header.header_length) as usize;
-    let mut certs: Vec<x509_parser::certificate::X509Certificate> = vec![];
+    let mut certs: Vec<Certificate> = vec![];
     for i in 0..cert_header.certificate_count {
         let x509_length = u32::from_le_bytes(image[start..start + 4].try_into().unwrap());
         info!(
@@ -371,27 +377,21 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
         trace!("    certificate length: {x509_length}");
         start += 4;
         let cert = &image[start..start + x509_length as usize];
-
-        let (_, cert) = x509_parser::parse_x509_certificate(cert)?;
+        let cert = cert::read_from_slice(cert)?;
+        let subject = &cert.tbs_certificate.subject;
+        let issuer = &cert.tbs_certificate.issuer;
         okay!("    Successfully parsed certificate");
         info!(
             "    Subject:\n      {}",
-            cert.subject().to_string().replace(", ", "\n      ")
+            subject.to_string().replace(", ", "\n      ")
         );
         info!(
             "    Issuer:\n      {}",
-            cert.issuer().to_string().replace(", ", "\n      ")
+            issuer.to_string().replace(", ", "\n      ")
         );
 
         let cmpa_rsa4k = cmpa.get_secure_boot_cfg()?.rsa4k;
-
-        let public_key_bits = rsa::RsaPublicKey::from_pkcs1_der(
-            cert.tbs_certificate.subject_pki.subject_public_key.as_ref(),
-        )
-        .unwrap()
-        .size()
-            * 8;
-
+        let public_key_bits = cert::public_key(&cert).unwrap().size() * 8;
         if !matches!(
             (cmpa_rsa4k, public_key_bits),
             (RSA4KStatus::RSA2048Keys, 2048)
@@ -409,7 +409,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
             );
         }
 
-        let prev_public_key = certs.last().map(|prev| prev.public_key());
+        let prev_public_key = certs.last().map(|prev| cert::public_key(prev).unwrap());
         let kind = if prev_public_key.is_some() {
             "chained"
         } else {
@@ -417,8 +417,8 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
         };
 
         // If this is the root certificate, then `prev_public_key` is `None` and
-        // `verify_signature` checks that it is correctly self-signed.
-        match cert.verify_signature(prev_public_key) {
+        // `verify_cert_signature` checks that it is correctly self-signed.
+        match verify_cert_signature(&cert, prev_public_key) {
             Ok(()) => okay!("    Verified {kind} certificate signature"),
             Err(e) => {
                 error!(
@@ -450,8 +450,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
     }
 
     let mut sha = sha2::Sha256::new();
-    let public_key = &certs[0].tbs_certificate.subject_pki.subject_public_key;
-    let public_key_rsa = rsa::RsaPublicKey::from_pkcs1_der(public_key.as_ref()).unwrap();
+    let public_key_rsa = cert::public_key(&certs[0])?;
     sha.update(public_key_rsa.n().to_bytes_be());
     sha.update(public_key_rsa.e().to_bytes_be());
     let out = sha.finalize().to_vec();
@@ -482,7 +481,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
 
     let last_cert = &certs.last().unwrap();
 
-    let last_cert_sn = last_cert.tbs_certificate.serial.to_bytes_be();
+    let last_cert_sn = last_cert.tbs_certificate.serial_number.as_bytes();
     let last_cert_sn_magic = &last_cert_sn[0..2];
     if last_cert_sn_magic != [0x3c, 0xc3] {
         error!(
@@ -516,13 +515,10 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<bo
         }
     }
 
-    let public_key = &last_cert.tbs_certificate.subject_pki.subject_public_key;
-    let public_key_rsa = rsa::RsaPublicKey::from_pkcs1_der(public_key.as_ref()).unwrap();
-    let signature = rsa::pkcs1v15::Signature::try_from(&image[start..]).unwrap();
-    trace!("signature length: {}", signature.as_ref().len());
-    let verifying_key =
-        rsa::pkcs1v15::VerifyingKey::<rsa::sha2::Sha256>::new_with_prefix(public_key_rsa);
-    match verifying_key.verify(&image[..start], &signature) {
+    trace!("signature length: {}", image.len() - start);
+    let public_key_rsa = cert::public_key(certs.last().unwrap())?;
+    let signature = &Signature::try_from(&image[start..]).unwrap();
+    match verify_signature(public_key_rsa, &image[..start], signature) {
         Ok(()) => okay!("Verified image signature against last certificate"),
         Err(e) => {
             error!(failed, "Failed to verify signature: {e:?}");
@@ -549,4 +545,23 @@ fn check_crc_image(image: &[u8]) -> Result<bool, Error> {
 fn check_plain_image(_image: &[u8]) -> Result<bool, Error> {
     okay!("Nothing to check for plain image");
     Ok(false)
+}
+
+fn verify_cert_signature(
+    cert: &Certificate,
+    public_key: Option<RsaPublicKey>,
+) -> Result<(), Error> {
+    let tbs = cert.tbs_certificate.to_der()?;
+    let public_key = public_key.unwrap_or_else(|| cert::public_key(cert).unwrap());
+    let signature = Signature::try_from(cert.signature.raw_bytes()).unwrap();
+    verify_signature(public_key, &tbs, &signature)
+}
+
+fn verify_signature(
+    public_key: RsaPublicKey,
+    message: &[u8],
+    signature: &Signature,
+) -> Result<(), Error> {
+    let verifying_key = VerifyingKey::<Sha256>::new(public_key);
+    Ok(verifying_key.verify(message, signature)?)
 }
