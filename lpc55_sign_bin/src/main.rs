@@ -13,11 +13,12 @@ use lpc55_areas::{
 use lpc55_sign::{
     cert::{read_certs, read_rsa_private_key},
     crc_image,
-    debug_auth::debug_credential,
+    debug_auth::{debug_auth_response, debug_credential, DebugAuthChallenge},
     signed_image::{self, pad_roots, CertConfig, DiceArgs},
 };
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use zerocopy::FromBytes;
 
 #[derive(Debug, Parser)]
 struct ImageArgs {
@@ -163,6 +164,26 @@ enum Command {
         /// CMPA and CFPA.
         #[clap(long)]
         debug_settings_cfg: PathBuf,
+    },
+    DebugAuthResponse {
+        dest_dar: PathBuf,
+
+        #[clap(long)]
+        debug_cred: PathBuf,
+
+        #[clap(long)]
+        debug_key: PathBuf,
+
+        #[clap(long)]
+        debug_auth_challenge: PathBuf,
+
+        /// When non-zero, ROM defers to running application when processing a
+        /// debug authentication response signed by this credential.  This
+        /// beacon value is provided to the running application to allow it to
+        /// decide what steps to take to prepare for debugging based on the
+        /// credential used.
+        #[clap(long, default_value_t = 0)]
+        beacon: u16,
     },
 }
 
@@ -416,6 +437,30 @@ fn main() -> Result<()> {
             )?;
 
             std::fs::write(dest_dc, debug_cred)?
+        }
+        Command::DebugAuthResponse {
+            dest_dar,
+            debug_cred,
+            debug_key,
+            debug_auth_challenge,
+            beacon,
+        } => {
+            let debug_cred = std::fs::read(debug_cred).context("Loading debug credential")?;
+
+            let debug_private_key =
+                read_rsa_private_key(&debug_key).context("Reading debug private key")?;
+
+            let debug_auth_challenge =
+                std::fs::read(debug_auth_challenge).context("Loading debug auth challenge")?;
+            let debug_auth_challenge =
+                DebugAuthChallenge::read_from(debug_auth_challenge.as_slice())
+                    .ok_or(anyhow!("Parsing Debug Auth Challenge failed"))?;
+            info!("Debug Auth Challenge: {debug_auth_challenge:#?}");
+
+            let debug_auth_response =
+                debug_auth_response(&debug_cred, debug_private_key, debug_auth_challenge, beacon)?;
+
+            std::fs::write(dest_dar, debug_auth_response)?
         }
     }
 

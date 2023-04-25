@@ -110,4 +110,7 @@ pub enum Error {
 
     #[error("RSA exponents is too large for Debug Credential format")]
     RsaExponentTooLarge,
+
+    #[error("Debug challenge is {0} bytes, expected 104 bytes")]
+    DebugAuthChallengeWrongSize(usize),
 }
