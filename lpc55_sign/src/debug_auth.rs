@@ -1,8 +1,10 @@
+use byteorder::LittleEndian;
 use lpc55_areas::DebugSettings;
 use num_traits::ToPrimitive;
 use rsa::{PublicKeyParts, RsaPrivateKey, RsaPublicKey};
 use sha2::{Digest, Sha256};
 use x509_cert::Certificate;
+use zerocopy::{FromBytes, U16, U32};
 
 use crate::{
     cert::public_key,
@@ -11,6 +13,29 @@ use crate::{
 };
 
 const SOCC: u32 = 0x0000_0001;
+
+#[derive(Debug, FromBytes)]
+#[repr(C)]
+pub struct DebugAuthChallenge {
+    // NXP UM11126 claims this is a single little-endian u32 version field.
+    // NXP's spsdk tooling implements it as done here: two little-endian u16s
+    // with version_major at the lower offset.  See
+    // https://github.com/nxp-mcuxpresso/spsdk/blob/5da31d96a020bd65e5834ea5ac1b68327ea965ef/spsdk/dat/dac_packet.py#L114.
+    version_major: U16<LittleEndian>,
+    version_minor: U16<LittleEndian>,
+
+    socc: U32<LittleEndian>,
+    uuid: [u8; 16],
+
+    rotk_revoke: U32<LittleEndian>,
+    rotkh: [u8; 32],
+
+    cc_socu_pin: U32<LittleEndian>,
+    cc_socu_dflt: U32<LittleEndian>,
+    vendor_usage: U32<LittleEndian>,
+
+    challenge_vector: [u8; 32],
+}
 
 pub fn debug_credential(
     root_certs: Vec<Certificate>,
@@ -104,4 +129,33 @@ pub fn debug_credential(
     dc_bytes.extend_from_slice(&signature);
 
     Ok(dc_bytes)
+}
+
+pub fn debug_auth_response(
+    debug_cred: &[u8],
+    debug_key: RsaPrivateKey,
+    debug_auth_challenge: DebugAuthChallenge,
+    beacon: u16,
+) -> Result<Vec<u8>, Error> {
+    // Probably should check debug_cred for compatibility with the provided
+    // challenge but, for now, trust the user to provide correct inputs.
+
+    let mut debug_auth_response = Vec::<u8>::new();
+    debug_auth_response.extend_from_slice(debug_cred);
+    debug_auth_response.extend_from_slice(&u32::from(beacon).to_le_bytes());
+
+    let mut hasher = Sha256::new();
+    hasher.update(&debug_auth_response);
+    hasher.update(debug_auth_challenge.challenge_vector);
+
+    let signature = debug_key
+        .sign(
+            rsa::pkcs1v15::Pkcs1v15Sign::new::<rsa::sha2::Sha256>(),
+            hasher.finalize().as_slice(),
+        )
+        .map_err(Error::SigningError)?;
+
+    debug_auth_response.extend_from_slice(&signature);
+
+    Ok(debug_auth_response)
 }
