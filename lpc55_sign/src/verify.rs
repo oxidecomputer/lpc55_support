@@ -146,12 +146,16 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
 
     info!("=== CFPA ====");
     let rkth_revoke = cfpa.get_rkth_revoke()?;
+    let cc_socu_ns_pin = cfpa.get_cc_socu_ns_pin()?;
+    let cc_socu_ns_dflt = cfpa.get_cc_socu_ns_dflt()?;
 
     trace!("Version: {:x}", cfpa.version);
     trace!("Secure FW Version: {:x}", cfpa.secure_firmware_version);
     trace!("Non-secure FW Version: {:x}", cfpa.ns_fw_version);
     trace!("Image key revoke: {:x}", cfpa.image_key_revoke);
     trace!("{:#?}", rkth_revoke);
+    trace!("{cc_socu_ns_pin:#?}");
+    trace!("{cc_socu_ns_dflt:#?}");
 
     // TODO: decide if we want to check CFPA digest
 
