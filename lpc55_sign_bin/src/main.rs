@@ -10,7 +10,7 @@ use lpc55_areas::{
     BootErrorPin, BootSpeed, CFPAPage, CMPAPage, DebugSettings, DefaultIsp, ROTKeyStatus,
 };
 use lpc55_sign::{
-    cert::read_certs,
+    cert::{read_certs, read_rsa_private_key},
     crc_image,
     signed_image::{self, pad_roots, CertConfig, DiceArgs},
 };
@@ -282,7 +282,7 @@ fn main() -> Result<()> {
             certs,
         } => {
             let cfg = certs.try_into_config()?;
-            let private_key = std::fs::read_to_string(&cfg.private_key)?;
+            let private_key = read_rsa_private_key(&cfg.private_key)?;
             let image = std::fs::read(src_bin)?;
             let signing_certs = read_certs(&cfg.signing_certs)?;
             let root_certs = read_certs(&cfg.root_certs)?;
