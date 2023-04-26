@@ -871,4 +871,12 @@ impl CFPAPage {
         let s = Self::unpack(b)?;
         Ok(s)
     }
+
+    pub fn get_cc_socu_ns_pin(&self) -> Result<CCSOCUPin, PackingError> {
+        Ok(CCSOCUPin(self.dcfg_cc_socu_ns_pin))
+    }
+
+    pub fn get_cc_socu_ns_dflt(&self) -> Result<CCSOCUDflt, PackingError> {
+        Ok(CCSOCUDflt(self.dcfg_cc_socu_ns_dflt))
+    }
 }
