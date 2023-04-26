@@ -75,6 +75,13 @@ enum Command {
         /// Skip interactive verification of the `--lock` option
         #[clap(short, long)]
         yes: bool,
+
+        /// TOML file containing initial configuration of debug access
+        /// permissions. These set the most permissive permissions allowable.
+        /// CFPA may only further restrict them. When not provided, all debug
+        /// features are set to always enabled.
+        #[clap(long)]
+        debug_settings_cfg: Option<PathBuf>,
     },
     /// Generate a CPFA bin with certificate 1 enabled and default debug
     /// settings
@@ -254,6 +261,7 @@ fn main() -> Result<()> {
             boot_err_port,
             lock,
             yes,
+            debug_settings_cfg,
         } => {
             if lock {
                 println!("{}: CMPA locking CANNOT BE UNDONE!", "WARNING".red());
@@ -275,7 +283,11 @@ fn main() -> Result<()> {
             }
             let cfg: CertConfig = certs.try_into_config()?;
             let root_certs = pad_roots(read_certs(&cfg.root_certs)?)?;
-            let debug_settings = DebugSettings::default();
+
+            let debug_settings = match debug_settings_cfg {
+                Some(path) => from_toml_file(path)?,
+                None => DebugSettings::default(),
+            };
 
             let required_key_size = signed_image::required_key_size(&root_certs)?;
             let use_rsa_4096 = match required_key_size {
