@@ -5,6 +5,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use colored::Colorize;
+use hex::FromHex;
 use log::info;
 use lpc55_areas::{
     BootErrorPin, BootSpeed, CFPAPage, CMPAPage, DebugSettings, DefaultIsp, ROTKeyStatus,
@@ -12,6 +13,7 @@ use lpc55_areas::{
 use lpc55_sign::{
     cert::{read_certs, read_rsa_private_key},
     crc_image,
+    debug_auth::debug_credential,
     signed_image::{self, pad_roots, CertConfig, DiceArgs},
 };
 use std::io::{Read, Write};
@@ -117,6 +119,50 @@ enum Command {
 
         #[clap(short = 'o', long = "out")]
         dst_img: PathBuf,
+    },
+    /// Generate a debug credential used to sign debug authentication challenges
+    DebugCredential {
+        dest_dc: PathBuf,
+
+        /// 16 byte UUID in hex.  If provided, the debug certificate will only
+        /// be sign challenges for a device that specifies the same UUID in its
+        /// debug authentication challenge.
+        #[clap(long)]
+        uuid: Option<String>,
+
+        /// TOML file containing the list of root certificates configured as
+        /// trust anchors in the CMPA.
+        #[clap(long)]
+        root_certs_cfg: PathBuf,
+
+        /// File containing the private key matching one of the root
+        /// certificates specified in roots_cert_cfg.
+        #[clap(long)]
+        root_key: PathBuf,
+
+        /// File containing the private key that will be used to sign debug
+        /// authentication challenges.
+        #[clap(long)]
+        debug_key: PathBuf,
+
+        /// Must match Vendor Usage fields in CMPA/CFPA.  Acts as a revocation
+        /// scheme for debug credentials.
+        #[clap(long, default_value_t = 0)]
+        vendor_usage: u32,
+
+        /// When non-zero, ROM defers to running application when processing a
+        /// debug authentication response signed by this credential.  This
+        /// beacon value is provided to the running application to allow it to
+        /// decide what steps to take to prepare for debugging based on the
+        /// credential used.
+        #[clap(long, default_value_t = 0)]
+        beacon: u16,
+
+        /// TOML file containing debug access rights that the debug credential
+        /// will request.  These may not exceed the permissions specified by
+        /// CMPA and CFPA.
+        #[clap(long)]
+        debug_settings_cfg: PathBuf,
     },
 }
 
@@ -329,6 +375,47 @@ fn main() -> Result<()> {
             let image = std::fs::read(src_img)?;
             let out = lpc55_sign::signed_image::remove_image_signature(image)?;
             std::fs::write(dst_img, out)?;
+        }
+        Command::DebugCredential {
+            root_certs_cfg,
+            root_key,
+            debug_key,
+            uuid,
+            vendor_usage,
+            beacon,
+            debug_settings_cfg,
+            dest_dc,
+        } => {
+            let root_certs_cfg = std::fs::read_to_string(root_certs_cfg)?;
+            let root_certs_cfg: CertConfig = toml::from_str(&root_certs_cfg)?;
+            let root_certs =
+                read_certs(&root_certs_cfg.root_certs).context("Reading root certificates")?;
+
+            let root_private_key =
+                read_rsa_private_key(&root_key).context("Reading root private key")?;
+
+            let debug_private_key =
+                read_rsa_private_key(&debug_key).context("Reading debug private key")?;
+            let debug_public_key = debug_private_key.to_public_key();
+
+            let uuid = match uuid {
+                Some(x) => <[u8; 16]>::from_hex(x)?,
+                None => [0; 16],
+            };
+
+            let debug_settings = from_toml_file(debug_settings_cfg)?;
+
+            let debug_cred = debug_credential(
+                root_certs,
+                &root_private_key,
+                &debug_public_key,
+                &uuid,
+                vendor_usage,
+                debug_settings,
+                beacon,
+            )?;
+
+            std::fs::write(dest_dc, debug_cred)?
         }
     }
 
