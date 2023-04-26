@@ -4,6 +4,7 @@
 
 pub mod cert;
 pub mod crc_image;
+pub mod debug_auth;
 pub mod signed_image;
 pub mod verify;
 
@@ -103,4 +104,10 @@ pub enum Error {
 
     #[error("attempt to use non-unary IMAGE_KEY_REVOKE in CFPA")]
     NonUnaryImageKeyRevoke(u16),
+
+    #[error("unsupported RSA key size: {key_size}")]
+    UnsupportedRsaKeySize { key_size: usize },
+
+    #[error("RSA exponents is too large for Debug Credential format")]
+    RsaExponentTooLarge,
 }

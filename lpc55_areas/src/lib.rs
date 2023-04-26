@@ -52,7 +52,7 @@ impl BootField {
 }
 
 // We designate bit 0 for DFLT and bit 1 for PIN
-#[derive(PrimitiveEnum, Copy, Clone, Debug, Deserialize)]
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 #[repr(u32)]
 pub enum DebugFieldSetting {
@@ -72,6 +72,10 @@ impl DebugFieldSetting {
 
     fn pin(&self) -> bool {
         (((*self as u32) & 2) >> 1) == 1
+    }
+
+    fn debug_cred_socu(&self) -> bool {
+        *self == DebugFieldSetting::DebugAuth
     }
 }
 
@@ -154,6 +158,22 @@ impl DebugSettings {
         dflt.set_cpu1_non_invasive_enable(self.cpu1_non_invasive_enable.dflt());
 
         dflt.invert_field()
+    }
+
+    pub fn debug_cred_socu(&self) -> u32 {
+        let mut dflt = CCSOCUDflt(0);
+
+        dflt.set_non_invasive_debug(self.non_invasive_debug.debug_cred_socu());
+        dflt.set_invasive_debug(self.invasive_debug.debug_cred_socu());
+        dflt.set_secure_invasive_debug(self.secure_invasive_debug.debug_cred_socu());
+        dflt.set_secure_non_invasive_debug(self.secure_non_invasive_debug.debug_cred_socu());
+        dflt.set_tap_enable(self.tap_enable.debug_cred_socu());
+        dflt.set_cpu1_dbg_enable(self.cpu1_dbg_enable.debug_cred_socu());
+        dflt.set_isp_enable(self.isp_enable.debug_cred_socu());
+        dflt.set_fa_me_enable(self.fa_me_enable.debug_cred_socu());
+        dflt.set_cpu1_non_invasive_enable(self.cpu1_non_invasive_enable.debug_cred_socu());
+
+        dflt.0 & 0xffff
     }
 }
 
