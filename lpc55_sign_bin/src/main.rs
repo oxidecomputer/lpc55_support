@@ -102,6 +102,13 @@ enum Command {
 
         #[clap(long, default_value_t = 0)]
         image_key_revoke: u16,
+
+        /// TOML file containing field configuration of debug access
+        /// permissions. These may only further restrict the permissions set in
+        /// CMPA. When not provided, all debug features are set to always
+        /// enabled.
+        #[clap(long)]
+        debug_settings_cfg: Option<PathBuf>,
     },
     /// Generate a secure signed image
     SignImage {
@@ -324,8 +331,12 @@ fn main() -> Result<()> {
             rkth2,
             rkth3,
             image_key_revoke,
+            debug_settings_cfg,
         } => {
-            let debug_settings = DebugSettings::default();
+            let debug_settings = match debug_settings_cfg {
+                Some(path) => from_toml_file(path)?,
+                None => DebugSettings::default(),
+            };
 
             //  NXP ROM only allows the revocation fields to have 0->1
             //  transitions for each individual bit.  Each slot starts in
