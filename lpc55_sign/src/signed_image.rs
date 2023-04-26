@@ -9,7 +9,7 @@ use byteorder::{ByteOrder, LittleEndian};
 use der::Encode as _;
 use lpc55_areas::*;
 use packed_struct::prelude::*;
-use rsa::{pkcs1::DecodeRsaPrivateKey, pkcs8::DecodePrivateKey, PublicKeyParts, RsaPrivateKey};
+use rsa::{PublicKeyParts, RsaPrivateKey};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use x509_cert::Certificate;
@@ -158,12 +158,10 @@ pub fn stamp_image(
 
 /// Decode the private key, sign the stamped image with it,
 /// and append the signature to the image.
-pub fn sign_image(binary: &[u8], private_key: &str) -> Result<Vec<u8>, Error> {
+pub fn sign_image(binary: &[u8], private_key: &RsaPrivateKey) -> Result<Vec<u8>, Error> {
     let mut image_hash = Sha256::new();
     image_hash.update(binary);
 
-    let private_key = RsaPrivateKey::from_pkcs1_pem(private_key)
-        .or_else(|_| RsaPrivateKey::from_pkcs8_pem(private_key))?;
     let signature = private_key
         .sign(
             rsa::pkcs1v15::Pkcs1v15Sign::new::<rsa::sha2::Sha256>(),

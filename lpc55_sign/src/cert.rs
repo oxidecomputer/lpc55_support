@@ -1,8 +1,9 @@
 use crate::Error;
 use const_oid;
 use der::{Decode as _, Encode as _, Reader as _};
-use rsa::pkcs1::DecodeRsaPublicKey;
-use rsa::RsaPublicKey;
+use rsa::pkcs1::{DecodeRsaPrivateKey, DecodeRsaPublicKey};
+use rsa::pkcs8::DecodePrivateKey;
+use rsa::{RsaPrivateKey, RsaPublicKey};
 use std::path::PathBuf;
 use x509_cert::Certificate;
 
@@ -24,6 +25,23 @@ pub fn read_certs(paths: &[PathBuf]) -> Result<Vec<Certificate>, Error> {
         certs.push(cert);
     }
     Ok(certs)
+}
+
+pub fn read_rsa_private_key(path: &PathBuf) -> Result<RsaPrivateKey, Error> {
+    let bytes = std::fs::read(path)?;
+    if bytes.starts_with(b"-----BEGIN") {
+        let (label, der) = pem_rfc7468::decode_vec(&bytes)?;
+        if label == "PRIVATE KEY" {
+            Ok(RsaPrivateKey::from_pkcs8_der(&der)?)
+        } else if label == "RSA PRIVATE KEY" {
+            Ok(RsaPrivateKey::from_pkcs1_der(&der)?)
+        } else {
+            return Err(Error::PemLabel(label.to_string()));
+        }
+    } else {
+        Ok(RsaPrivateKey::from_pkcs1_der(&bytes)
+            .or_else(|_| RsaPrivateKey::from_pkcs8_der(&bytes))?)
+    }
 }
 
 /// `Certificate::from_der` uses a `der::SliceReader`, which returns
