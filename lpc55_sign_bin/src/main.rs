@@ -156,6 +156,15 @@ struct Opts {
     cmd: Command,
 }
 
+fn from_toml_file<T>(path: PathBuf) -> Result<T>
+where
+    T: for<'de> toml::macros::Deserialize<'de>,
+{
+    let toml =
+        std::fs::read_to_string(&path).with_context(|| format!("Reading {}", path.display()))?;
+    toml::from_str(&toml).with_context(|| format!("Parsing {} as TOML", path.display()))
+}
+
 fn main() -> Result<()> {
     let cmd = Opts::parse();
 
