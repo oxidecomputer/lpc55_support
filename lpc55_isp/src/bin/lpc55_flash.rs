@@ -371,7 +371,7 @@ fn main() -> Result<()> {
                         .write(true)
                         .truncate(true)
                         .create(true)
-                        .open(&path)?,
+                        .open(path)?,
                 ) as Box<dyn Write>,
                 None => Box::new(std::io::stdout()) as Box<dyn Write>,
             };

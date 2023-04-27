@@ -218,6 +218,7 @@ pub fn root_key_table_hash(root_certs: &RootCerts) -> Result<Hash, Error> {
 }
 
 /// Generates a CMPA page
+#[allow(clippy::too_many_arguments)]
 pub fn generate_cmpa(
     dice: DiceArgs,
     enable_secure_boot: bool,
