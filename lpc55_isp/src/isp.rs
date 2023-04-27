@@ -377,8 +377,8 @@ fn check_crc(frame_bytes: &[u8], response: &[u8], frame: &FramingPacket) -> Resu
     {
         return Err(anyhow!(
             "CRC failure on packet expect {:x}{:x} got {:x}",
-            frame.crc16_high as u8,
-            frame.crc16_low as u8,
+            frame.crc16_high,
+            frame.crc16_low,
             digest
         ));
     }
