@@ -14,7 +14,8 @@ use packed_struct::{EnumCatchAll, PackedStruct};
 use rsa::{
     pkcs1v15::{Signature, VerifyingKey},
     signature::Verifier as _,
-    PublicKeyParts, RsaPublicKey,
+    traits::PublicKeyParts,
+    RsaPublicKey,
 };
 use sha2::{Digest as _, Sha256};
 use std::io::Write as _;

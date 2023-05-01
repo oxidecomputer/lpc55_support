@@ -9,7 +9,7 @@ use byteorder::{ByteOrder, LittleEndian};
 use der::Encode as _;
 use lpc55_areas::*;
 use packed_struct::prelude::*;
-use rsa::{PublicKeyParts, RsaPrivateKey};
+use rsa::{traits::PublicKeyParts, RsaPrivateKey};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use x509_cert::Certificate;
