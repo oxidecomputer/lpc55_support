@@ -253,9 +253,9 @@ dependencies = [
 
 [[package]]
 name = "der"
-version = "0.7.3"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82b10af9f9f9f2134a42d3f8aa74658660f2e0234b0eb81bd171df8aa32779ed"
+checksum = "05e58dffcdcc8ee7b22f0c1f71a69243d7c2d9ad87b5a14361f2424a1565c219"
 dependencies = [
  "const-oid",
  "der_derive",
@@ -266,14 +266,14 @@ dependencies = [
 
 [[package]]
 name = "der_derive"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63898447d5453a504531990fb79708be1087effb2da9b2704f54dbdf8b6890e4"
+checksum = "114792ba6b7545d3f3dd693794aed3a312a67795cd577fcc725c148d84fabe32"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -485,7 +485,7 @@ dependencies = [
 
 [[package]]
 name = "lpc55_sign"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "byteorder",
  "clap",
