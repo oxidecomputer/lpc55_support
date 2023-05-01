@@ -1,7 +1,7 @@
 use byteorder::LittleEndian;
 use lpc55_areas::DebugSettings;
 use num_traits::ToPrimitive;
-use rsa::{PublicKeyParts, RsaPrivateKey, RsaPublicKey};
+use rsa::{traits::PublicKeyParts, RsaPrivateKey, RsaPublicKey};
 use sha2::{Digest, Sha256};
 use x509_cert::Certificate;
 use zerocopy::{FromBytes, U16, U32};
