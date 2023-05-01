@@ -17,7 +17,7 @@ clap = { version = "4", default-features = false, features = ["std", "derive", "
 colored = { version = "2.0", default-features = false }
 const-oid = { version = "0.9.2", default-features = false }
 crc-any = { version = "2.4.3", default-features = false }
-der = { version = "0.7.3", default-features = false, features = ["std"] }
+der = { version = "0.7.5", default-features = false, features = ["std"] }
 env_logger = { version = "0.10", default-features = false, features = ["auto-color"] }
 hex = { version = "0.4.3", default-features = false, features = ["std"] }
 log = { version = "0.4", default-features = false }
