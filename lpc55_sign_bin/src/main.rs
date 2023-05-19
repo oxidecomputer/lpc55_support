@@ -199,33 +199,68 @@ enum Command {
         #[clap(long, default_value_t = 0)]
         beacon: u16,
     },
+    /// Generates a TOML file encapsulating certificate settings, which can then
+    /// be passed to the `--cert-cfg` option for other subcommands.
+    GenCertCfg {
+        /// Path to private key, if available.
+        #[clap(long)]
+        private_key: Option<PathBuf>,
+        /// Path to root cert; can be repeated.
+        #[clap(long)]
+        root_cert: Vec<PathBuf>,
+        /// Path to signing cert; can be repeated.
+        #[clap(long)]
+        signing_cert: Vec<PathBuf>,
+    },
 }
 
 #[derive(Debug, Parser)]
 struct CertArgs {
-    #[clap(long, requires = "root_cert")]
+    /// Path to private key file, if available. Not all operations require this.
+    ///
+    /// Cannot be combined with the `--cert-cfg` option.
+    #[clap(long)]
     private_key: Option<PathBuf>,
-    #[clap(long, requires = "private_key")]
+    /// Path to root certificate.
+    ///
+    /// This interface will also reuse the root certificate as the signing
+    /// certificate. To override signing certificates, see the `--cert-cfg`
+    /// option.
+    ///
+    /// Cannot be combined with the `--cert-cfg` option.
+    #[clap(long)]
     root_cert: Option<PathBuf>,
 
+    /// Path to a TOML file specifying the cert configuration. This file can
+    /// contain three top-level keys, all optional. `private-key` gives the path
+    /// to a private key on disk, if available. `root-certs` should be an array
+    /// of strings giving the absolute paths to the root certificates.
+    /// `signing-certs` should be an array of strings giving the absolute paths
+    /// to signing certificates.
+    ///
+    /// This is intended to avoid having to pass all that on the command line
+    /// every time.
+    ///
+    /// See the `gen-cert-cfg` subcommand to generate this file automatically.
+    ///
+    /// Cannot be combined with either the `--private-key` or `--root-cert`
+    /// options.
     #[clap(long, conflicts_with_all = ["private_key", "root_cert"])]
     cert_cfg: Option<PathBuf>,
 }
 
 impl CertArgs {
     fn try_into_config(self) -> Result<CertConfig> {
-        if (self.private_key.is_none() || self.root_cert.is_none()) && self.cert_cfg.is_none() {
-            bail!("must provide either root-cert + private-key, or cert-cfg")
-        } else if let Some(s) = self.cert_cfg {
+        if let Some(s) = self.cert_cfg {
             let cfg_contents = std::fs::read_to_string(s)?;
             let cfg = toml::from_str(&cfg_contents)?;
             Ok(cfg)
         } else {
-            let root = self.root_cert.unwrap();
+            let root_vec = self.root_cert.into_iter().collect::<Vec<_>>();
             Ok(CertConfig {
-                private_key: self.private_key.unwrap(),
-                root_certs: vec![root.clone()],
-                signing_certs: vec![root],
+                private_key: self.private_key,
+                root_certs: root_vec.clone(),
+                signing_certs: root_vec,
             })
         }
     }
@@ -381,7 +416,11 @@ fn main() -> Result<()> {
             certs,
         } => {
             let cfg = certs.try_into_config()?;
-            let private_key = read_rsa_private_key(&cfg.private_key)?;
+            let Some(private_key) = cfg.private_key.as_ref() else {
+                bail!("sign-image requires a private key to be provided as an \
+                       arg or in the cert-cfg.");
+            };
+            let private_key = read_rsa_private_key(private_key)?;
             let image = std::fs::read(src_bin)?;
             let signing_certs = read_certs(&cfg.signing_certs)?;
             let root_certs = read_certs(&cfg.root_certs)?;
@@ -484,6 +523,18 @@ fn main() -> Result<()> {
                 debug_auth_response(&debug_cred, debug_private_key, debug_auth_challenge, beacon)?;
 
             std::fs::write(dest_dar, debug_auth_response)?
+        }
+        Command::GenCertCfg {
+            private_key,
+            root_cert,
+            signing_cert,
+        } => {
+            let cfg = CertConfig {
+                private_key,
+                signing_certs: signing_cert,
+                root_certs: root_cert,
+            };
+            println!("{}", toml::to_string_pretty(&cfg)?);
         }
     }
 
