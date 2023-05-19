@@ -346,7 +346,7 @@ fn main() -> Result<()> {
                     dice_args,
                     !without_secure_boot,
                     debug_settings,
-                    DefaultIsp::Auto,
+                    DefaultIsp::Uart,
                     BootSpeed::Fro96mhz,
                     BootErrorPin::new(boot_err_port, boot_err_pin).ok_or_else(|| {
                         anyhow!("invalid boot port: {boot_err_port}:{boot_err_pin}")
