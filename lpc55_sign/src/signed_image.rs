@@ -10,15 +10,17 @@ use der::Encode as _;
 use lpc55_areas::*;
 use packed_struct::prelude::*;
 use rsa::{traits::PublicKeyParts, RsaPrivateKey};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use x509_cert::Certificate;
 
-#[derive(Clone, Debug, Deserialize)]
+/// Struct defining the TOML format for `--cert-cfg`, which bundles up flags
+/// that would otherwise need to appear on the command line.
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct CertConfig {
     /// The file containing the private key with which to sign the image.
-    pub private_key: PathBuf,
+    pub private_key: Option<PathBuf>,
 
     /// The chain of DER-encoded signing certificate files, in root-to-leaf
     /// order. The image will be signed with the private key corresponding
