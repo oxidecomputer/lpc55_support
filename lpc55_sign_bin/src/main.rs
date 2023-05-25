@@ -84,7 +84,7 @@ enum Command {
         /// features are set to always enabled.
         /// See the `gen-debug-cfg` subcommand to generate this file automatically.
         #[clap(long)]
-        debug_settings_cfg: Option<PathBuf>,
+        debug_cfg: Option<PathBuf>,
     },
     /// Generate a CPFA bin with certificate 1 enabled and default debug
     /// settings
@@ -112,7 +112,7 @@ enum Command {
         /// enabled.
         /// See the `gen-debug-cfg` subcommand to generate this file automatically.
         #[clap(long)]
-        debug_settings_cfg: Option<PathBuf>,
+        debug_cfg: Option<PathBuf>,
     },
     /// Generate a secure signed image
     SignImage {
@@ -182,7 +182,7 @@ enum Command {
         /// CMPA and CFPA.
         /// See the `gen-debug-cfg` subcommand to generate this file automatically.
         #[clap(long)]
-        debug_settings_cfg: PathBuf,
+        debug_cfg: PathBuf,
     },
     /// Generate a request to sign a debug credential.
     ///
@@ -220,7 +220,7 @@ enum Command {
         /// CMPA and CFPA.
         /// See the `gen-debug-cfg` subcommand to generate this file automatically.
         #[clap(long)]
-        debug_settings_cfg: PathBuf,
+        debug_cfg: PathBuf,
     },
     DebugAuthResponse {
         dest_dar: PathBuf,
@@ -256,7 +256,7 @@ enum Command {
         signing_cert: Vec<PathBuf>,
     },
     /// Generates a TOML file containing debug permissions settings with can be
-    /// passed to the `--debug-settings-cfg` option for other subcommands.
+    /// passed to the `--debug-cfg` option for other subcommands.
     GenDebugCfg {
         #[clap(flatten)]
         debug_settings: DebugSettings,
@@ -352,7 +352,7 @@ fn main() -> Result<()> {
             boot_err_port,
             lock,
             yes,
-            debug_settings_cfg,
+            debug_cfg,
         } => {
             if lock {
                 println!("{}: CMPA locking CANNOT BE UNDONE!", "WARNING".red());
@@ -375,7 +375,7 @@ fn main() -> Result<()> {
             let cfg: CertConfig = certs.try_into_config()?;
             let root_certs = pad_roots(read_certs(&cfg.root_certs)?)?;
 
-            let debug_settings = match debug_settings_cfg {
+            let debug_settings = match debug_cfg {
                 Some(path) => from_toml_file(path)?,
                 None => DebugSettings::default(),
             };
@@ -415,9 +415,9 @@ fn main() -> Result<()> {
             rkth2,
             rkth3,
             image_key_revoke,
-            debug_settings_cfg,
+            debug_cfg,
         } => {
-            let debug_settings = match debug_settings_cfg {
+            let debug_settings = match debug_cfg {
                 Some(path) => from_toml_file(path)?,
                 None => DebugSettings::default(),
             };
@@ -514,7 +514,7 @@ fn main() -> Result<()> {
             debug_key,
             vendor_usage,
             beacon,
-            debug_settings_cfg,
+            debug_cfg,
         } => {
             let debug_private_key =
                 read_rsa_private_key(&debug_key).context("Reading debug private key")?;
@@ -525,7 +525,7 @@ fn main() -> Result<()> {
                 None => [0; 16],
             };
 
-            let debug_settings = from_toml_file(debug_settings_cfg)?;
+            let debug_settings = from_toml_file(debug_cfg)?;
 
             let dcsr = DebugCredentialSigningRequest {
                 debug_public_key,
@@ -544,7 +544,7 @@ fn main() -> Result<()> {
             uuid,
             vendor_usage,
             beacon,
-            debug_settings_cfg,
+            debug_cfg,
             dest_dc,
         } => {
             let root_certs_cfg = std::fs::read_to_string(root_certs_cfg)?;
@@ -564,7 +564,7 @@ fn main() -> Result<()> {
                 None => [0; 16],
             };
 
-            let debug_settings = from_toml_file(debug_settings_cfg)?;
+            let debug_settings = from_toml_file(debug_cfg)?;
 
             let debug_cred = debug_credential(
                 root_certs,
