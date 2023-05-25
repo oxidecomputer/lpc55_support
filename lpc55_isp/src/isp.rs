@@ -342,16 +342,7 @@ fn read_ack(port: &mut dyn serialport::SerialPort) -> Result<()> {
                 // The return value is always the first parameter
                 let retval = p[0];
 
-                // Some more specific error messages.
-                if retval == 10203 {
-                    return Err(anyhow!("Did you forget to erase the flash? (err 10203)"));
-                } else if retval == 10101 {
-                    return Err(anyhow!(
-                        "Incorrect signature. Is the SBKEK set correctly? (err 10101)"
-                    ));
-                } else {
-                    return Err(anyhow!("ISP error returned: {}", retval));
-                }
+                return Err(retval2err(retval));
             }
             Err(e) => return Err(e),
         }
@@ -362,6 +353,19 @@ fn read_ack(port: &mut dyn serialport::SerialPort) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn retval2err(retval: u32) -> anyhow::Error {
+    // Some more specific error messages.
+    if retval == 10203 {
+        anyhow!("Did you forget to erase the flash? (err 10203)")
+    } else if retval == 10101 {
+        anyhow!("Incorrect signature. Is the SBKEK set correctly? (err 10101)")
+    } else if retval == 10001 {
+        anyhow!("Security violation! (err 10001)")
+    } else {
+        anyhow!("ISP error returned: {retval}")
+    }
 }
 
 fn check_crc(frame_bytes: &[u8], response: &[u8], frame: &FramingPacket) -> Result<()> {
@@ -455,7 +459,7 @@ pub fn read_response(
 
     let command = RawCommand::unpack_from_slice(&response[..RawCommand::packed_bytes_size(None)?])?;
 
-    if command.tag != (response_type as u8) {
+    if command.tag != (response_type as u8) && command.tag != 0xA0 {
         return Err(anyhow!(
             "Expected a response type of {:x}, got {:x}",
             response_type as u8,
@@ -480,15 +484,7 @@ pub fn read_response(
 
     if retval != 0 {
         // Some more specific error messages.
-        if retval == 10203 {
-            Err(anyhow!("Did you forget to erase the flash? (err 10203)"))
-        } else if retval == 10101 {
-            Err(anyhow!(
-                "Incorrect signature. Is the SBKEK set correctly? (err 10101)"
-            ))
-        } else {
-            Err(anyhow!("ISP error returned: {}", retval))
-        }
+        return Err(retval2err(retval));
     } else {
         Ok(params)
     }
