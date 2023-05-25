@@ -52,7 +52,7 @@ impl BootField {
 }
 
 // We designate bit 0 for DFLT and bit 1 for PIN
-#[derive(PrimitiveEnum, Copy, Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(clap::ValueEnum, PrimitiveEnum, Copy, Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 #[repr(u32)]
 pub enum DebugFieldSetting {
@@ -79,34 +79,53 @@ impl DebugFieldSetting {
     }
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[derive(clap::Parser, Copy, Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct DebugSettings {
     // The matrix of debug settings for CPU0
+    #[clap(long, value_enum, default_value_t = DebugFieldSetting::AlwaysEnabled)]
     #[serde(default = "DebugFieldSetting::always_enabled")]
     pub non_invasive_debug: DebugFieldSetting,
+
+    #[clap(long, value_enum, default_value_t = DebugFieldSetting::AlwaysEnabled)]
     #[serde(default = "DebugFieldSetting::always_enabled")]
     pub invasive_debug: DebugFieldSetting,
+
+    #[clap(long, value_enum, default_value_t = DebugFieldSetting::AlwaysEnabled)]
     #[serde(default = "DebugFieldSetting::always_enabled")]
     pub secure_non_invasive_debug: DebugFieldSetting,
+
+    #[clap(long, value_enum, default_value_t = DebugFieldSetting::AlwaysEnabled)]
     #[serde(default = "DebugFieldSetting::always_enabled")]
     pub secure_invasive_debug: DebugFieldSetting,
+
     // JTAG/TAP access
+    #[clap(long, value_enum, default_value_t = DebugFieldSetting::AlwaysEnabled)]
     #[serde(default = "DebugFieldSetting::always_enabled")]
     pub tap_enable: DebugFieldSetting,
+
     // CPU1 debugging
+    #[clap(long, value_enum, default_value_t = DebugFieldSetting::AlwaysEnabled)]
     #[serde(default = "DebugFieldSetting::always_enabled")]
     pub cpu1_dbg_enable: DebugFieldSetting,
+
     // ISP allowed via debug mailbox
+    #[clap(long, value_enum, default_value_t = DebugFieldSetting::AlwaysEnabled)]
     #[serde(default = "DebugFieldSetting::always_enabled")]
     pub isp_enable: DebugFieldSetting,
+
     // fault analysis/mass erase enable
+    #[clap(long, value_enum, default_value_t = DebugFieldSetting::AlwaysEnabled)]
     #[serde(default = "DebugFieldSetting::always_enabled")]
     pub fa_me_enable: DebugFieldSetting,
+
     // CPU1 non-invasive debugging
+    #[clap(long, value_enum, default_value_t = DebugFieldSetting::AlwaysEnabled)]
     #[serde(default = "DebugFieldSetting::always_enabled")]
     pub cpu1_non_invasive_enable: DebugFieldSetting,
+
     // require exact UUID match
+    #[clap(long, action = clap::ArgAction::Set, default_value_t = false)]
     #[serde(default)]
     pub uuid_check: bool,
 }

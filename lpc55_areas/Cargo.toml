@@ -5,5 +5,6 @@ edition = "2021"
 
 [dependencies]
 bitfield.workspace = true
+clap.workspace = true
 packed_struct.workspace = true
 serde.workspace = true

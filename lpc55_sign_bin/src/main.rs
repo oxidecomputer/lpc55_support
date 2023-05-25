@@ -82,6 +82,7 @@ enum Command {
         /// permissions. These set the most permissive permissions allowable.
         /// CFPA may only further restrict them. When not provided, all debug
         /// features are set to always enabled.
+        /// See the `gen-debug-cfg` subcommand to generate this file automatically.
         #[clap(long)]
         debug_settings_cfg: Option<PathBuf>,
     },
@@ -109,6 +110,7 @@ enum Command {
         /// permissions. These may only further restrict the permissions set in
         /// CMPA. When not provided, all debug features are set to always
         /// enabled.
+        /// See the `gen-debug-cfg` subcommand to generate this file automatically.
         #[clap(long)]
         debug_settings_cfg: Option<PathBuf>,
     },
@@ -178,6 +180,7 @@ enum Command {
         /// TOML file containing debug access rights that the debug credential
         /// will request.  These may not exceed the permissions specified by
         /// CMPA and CFPA.
+        /// See the `gen-debug-cfg` subcommand to generate this file automatically.
         #[clap(long)]
         debug_settings_cfg: PathBuf,
     },
@@ -215,6 +218,7 @@ enum Command {
         /// TOML file containing debug access rights that the debug credential
         /// will request.  These may not exceed the permissions specified by
         /// CMPA and CFPA.
+        /// See the `gen-debug-cfg` subcommand to generate this file automatically.
         #[clap(long)]
         debug_settings_cfg: PathBuf,
     },
@@ -250,6 +254,12 @@ enum Command {
         /// Path to signing cert; can be repeated.
         #[clap(long)]
         signing_cert: Vec<PathBuf>,
+    },
+    /// Generates a TOML file containing debug permissions settings with can be
+    /// passed to the `--debug-settings-cfg` option for other subcommands.
+    GenDebugCfg {
+        #[clap(flatten)]
+        debug_settings: DebugSettings,
     },
 }
 
@@ -603,6 +613,9 @@ fn main() -> Result<()> {
                 root_certs: root_cert,
             };
             println!("{}", toml::to_string_pretty(&cfg)?);
+        }
+        Command::GenDebugCfg { debug_settings } => {
+            println!("{}", toml::to_string_pretty(&debug_settings)?);
         }
     }
 
