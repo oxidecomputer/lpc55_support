@@ -514,6 +514,7 @@ name = "lpc55_areas"
 version = "0.2.3"
 dependencies = [
  "bitfield",
+ "clap",
  "packed_struct",
  "serde",
 ]
