@@ -20,6 +20,7 @@ packed_struct.workspace = true
 pem-rfc7468.workspace = true
 rsa.workspace = true
 serde.workspace = true
+serde-hex.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 x509-cert.workspace = true

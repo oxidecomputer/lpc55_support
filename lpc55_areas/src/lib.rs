@@ -6,7 +6,7 @@ use std::fmt::Debug;
 
 use packed_struct::prelude::*;
 use packed_struct::PackingError;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // Table 183, section 7.3.4
 #[derive(PrimitiveEnum, Copy, Clone, Debug, Eq, PartialEq)]
@@ -52,7 +52,7 @@ impl BootField {
 }
 
 // We designate bit 0 for DFLT and bit 1 for PIN
-#[derive(PrimitiveEnum, Copy, Clone, Debug, Deserialize, PartialEq)]
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 #[repr(u32)]
 pub enum DebugFieldSetting {
@@ -79,7 +79,7 @@ impl DebugFieldSetting {
     }
 }
 
-#[derive(Copy, Clone, Debug, Deserialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct DebugSettings {
     // The matrix of debug settings for CPU0

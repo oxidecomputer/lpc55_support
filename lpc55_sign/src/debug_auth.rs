@@ -2,6 +2,8 @@ use byteorder::LittleEndian;
 use lpc55_areas::DebugSettings;
 use num_traits::ToPrimitive;
 use rsa::{traits::PublicKeyParts, RsaPrivateKey, RsaPublicKey};
+use serde::{Deserialize, Serialize};
+use serde_hex::{SerHex, StrictPfx};
 use sha2::{Digest, Sha256};
 use x509_cert::Certificate;
 use zerocopy::{FromBytes, U16, U32};
@@ -35,6 +37,16 @@ pub struct DebugAuthChallenge {
     vendor_usage: U32<LittleEndian>,
 
     challenge_vector: [u8; 32],
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DebugCredentialSigningRequest {
+    pub debug_public_key: RsaPublicKey,
+    #[serde(with = "SerHex::<StrictPfx>")]
+    pub uuid: [u8; 16],
+    pub vendor_usage: u32,
+    pub debug_settings: DebugSettings,
+    pub beacon: u16,
 }
 
 pub fn debug_credential(
