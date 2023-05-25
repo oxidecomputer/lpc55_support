@@ -49,17 +49,11 @@ pub struct DebugCredentialSigningRequest {
     pub beacon: u16,
 }
 
-pub fn debug_credential(
+pub fn debug_credential_tbs(
     root_certs: Vec<Certificate>,
-    root_key: &RsaPrivateKey,
-    debug_key: &RsaPublicKey,
-    uuid: &[u8; 16],
-    vendor_usage: u32,
-    debug_settings: DebugSettings,
-    beacon: u16,
+    root_public_key: RsaPublicKey,
+    dcsr: DebugCredentialSigningRequest,
 ) -> Result<Vec<u8>, Error> {
-    let root_public_key = root_key.to_public_key();
-
     root_certs
         .iter()
         .fold(Err(Error::RootNotFound), |acc, cert| {
@@ -75,8 +69,8 @@ pub fn debug_credential(
             }
         })?;
 
-    let debug_key_size_bits = debug_key.size() * 8;
-    let root_key_size_bits = root_key.size() * 8;
+    let debug_key_size_bits = dcsr.debug_public_key.size() * 8;
+    let root_key_size_bits = root_public_key.size() * 8;
     if root_key_size_bits != debug_key_size_bits {
         return Err(Error::VaryingPublicKeySizes);
     };
@@ -98,7 +92,7 @@ pub fn debug_credential(
     dc_bytes.extend_from_slice(&version_major.to_le_bytes());
     dc_bytes.extend_from_slice(&version_minor.to_le_bytes());
     dc_bytes.extend_from_slice(&SOCC.to_le_bytes());
-    dc_bytes.extend_from_slice(uuid);
+    dc_bytes.extend_from_slice(&dcsr.uuid);
 
     // The hash of each root public key (i.e., of its raw `n` and `e` values).
     // These _must_ match the hash-of-hashes programmed in the CMPA!
@@ -106,18 +100,19 @@ pub fn debug_credential(
         dc_bytes.extend_from_slice(&root_key_hash(root.as_ref())?);
     }
 
-    dc_bytes.extend_from_slice(&debug_key.n().to_bytes_be());
+    dc_bytes.extend_from_slice(&dcsr.debug_public_key.n().to_bytes_be());
     dc_bytes.extend_from_slice(
-        &debug_key
+        &dcsr
+            .debug_public_key
             .e()
             .to_u32()
             .ok_or(Error::RsaExponentTooLarge)?
             .to_be_bytes(),
     );
 
-    dc_bytes.extend_from_slice(&debug_settings.debug_cred_socu().to_le_bytes());
-    dc_bytes.extend_from_slice(&vendor_usage.to_le_bytes());
-    dc_bytes.extend_from_slice(&u32::from(beacon).to_le_bytes());
+    dc_bytes.extend_from_slice(&dcsr.debug_settings.debug_cred_socu().to_le_bytes());
+    dc_bytes.extend_from_slice(&dcsr.vendor_usage.to_le_bytes());
+    dc_bytes.extend_from_slice(&u32::from(dcsr.beacon).to_le_bytes());
 
     dc_bytes.extend_from_slice(&root_public_key.n().to_bytes_be());
     dc_bytes.extend_from_slice(
@@ -128,8 +123,30 @@ pub fn debug_credential(
             .to_be_bytes(),
     );
 
+    Ok(dc_bytes)
+}
+
+pub fn debug_credential(
+    root_certs: Vec<Certificate>,
+    root_key: &RsaPrivateKey,
+    debug_key: &RsaPublicKey,
+    uuid: &[u8; 16],
+    vendor_usage: u32,
+    debug_settings: DebugSettings,
+    beacon: u16,
+) -> Result<Vec<u8>, Error> {
+    let dcsr = DebugCredentialSigningRequest {
+        debug_public_key: debug_key.clone(),
+        uuid: *uuid,
+        vendor_usage,
+        debug_settings,
+        beacon,
+    };
+
+    let dc_tbs = debug_credential_tbs(root_certs, root_key.to_public_key(), dcsr)?;
+
     let mut dc_hash = Sha256::new();
-    dc_hash.update(&dc_bytes);
+    dc_hash.update(&dc_tbs);
 
     let signature = root_key
         .sign(
@@ -138,9 +155,11 @@ pub fn debug_credential(
         )
         .map_err(Error::SigningError)?;
 
-    dc_bytes.extend_from_slice(&signature);
+    let mut dc = Vec::new();
+    dc.extend_from_slice(&dc_tbs);
+    dc.extend_from_slice(&signature);
 
-    Ok(dc_bytes)
+    Ok(dc)
 }
 
 pub fn debug_auth_response(
