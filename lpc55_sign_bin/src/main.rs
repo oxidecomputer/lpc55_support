@@ -13,7 +13,9 @@ use lpc55_areas::{
 use lpc55_sign::{
     cert::{read_certs, read_rsa_private_key},
     crc_image,
-    debug_auth::{debug_auth_response, debug_credential, DebugAuthChallenge},
+    debug_auth::{
+        debug_auth_response, debug_credential, DebugAuthChallenge, DebugCredentialSigningRequest,
+    },
     signed_image::{self, pad_roots, CertConfig, DiceArgs},
 };
 use std::io::{Read, Write};
@@ -154,6 +156,43 @@ enum Command {
         /// certificates specified in roots_cert_cfg.
         #[clap(long)]
         root_key: PathBuf,
+
+        /// File containing the private key that will be used to sign debug
+        /// authentication challenges.
+        #[clap(long)]
+        debug_key: PathBuf,
+
+        /// Must match Vendor Usage fields in CMPA/CFPA.  Acts as a revocation
+        /// scheme for debug credentials.
+        #[clap(long, default_value_t = 0)]
+        vendor_usage: u32,
+
+        /// When non-zero, ROM defers to running application when processing a
+        /// debug authentication response signed by this credential.  This
+        /// beacon value is provided to the running application to allow it to
+        /// decide what steps to take to prepare for debugging based on the
+        /// credential used.
+        #[clap(long, default_value_t = 0)]
+        beacon: u16,
+
+        /// TOML file containing debug access rights that the debug credential
+        /// will request.  These may not exceed the permissions specified by
+        /// CMPA and CFPA.
+        #[clap(long)]
+        debug_settings_cfg: PathBuf,
+    },
+    /// Generate a request to sign a debug credential.
+    ///
+    /// This is most useful when the debug credential needs to be signed by
+    /// a root key that is kept in a vault such as offline-keystore.
+    DebugCredentialSigningRequest {
+        out: PathBuf,
+
+        /// 16 byte UUID in hex.  If provided, the debug certificate will only
+        /// be sign challenges for a device that specifies the same UUID in its
+        /// debug authentication challenge.
+        #[clap(long)]
+        uuid: Option<String>,
 
         /// File containing the private key that will be used to sign debug
         /// authentication challenges.
@@ -458,6 +497,35 @@ fn main() -> Result<()> {
             let image = std::fs::read(src_img)?;
             let out = lpc55_sign::signed_image::remove_image_signature(image)?;
             std::fs::write(dst_img, out)?;
+        }
+        Command::DebugCredentialSigningRequest {
+            out,
+            uuid,
+            debug_key,
+            vendor_usage,
+            beacon,
+            debug_settings_cfg,
+        } => {
+            let debug_private_key =
+                read_rsa_private_key(&debug_key).context("Reading debug private key")?;
+            let debug_public_key = debug_private_key.to_public_key();
+
+            let uuid = match uuid {
+                Some(x) => <[u8; 16]>::from_hex(x)?,
+                None => [0; 16],
+            };
+
+            let debug_settings = from_toml_file(debug_settings_cfg)?;
+
+            let dcsr = DebugCredentialSigningRequest {
+                debug_public_key,
+                uuid,
+                vendor_usage,
+                debug_settings,
+                beacon,
+            };
+
+            std::fs::write(out, serde_json::to_string(&dcsr)?)?
         }
         Command::DebugCredential {
             root_certs_cfg,
