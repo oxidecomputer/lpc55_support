@@ -42,6 +42,8 @@ pub struct DebugAuthChallenge {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct DebugCredentialSigningRequest {
     pub debug_public_key: RsaPublicKey,
+    // Serialize as a hex literal with mandatory 0x prefix:
+    // 0x000102030405060708090a0b0c0d0e0f
     #[serde(with = "SerHex::<StrictPfx>")]
     pub uuid: [u8; 16],
     pub vendor_usage: u32,
