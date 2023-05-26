@@ -74,7 +74,7 @@ fn main() -> Result<()> {
     } else {
         println!("Writing updated CFPA region back to the device");
 
-        do_isp_write_memory(&mut *port, 0x9de00, updated.to_vec())?;
+        do_isp_write_memory(&mut *port, 0x9de00, &updated)?;
         println!("done!");
     }
 

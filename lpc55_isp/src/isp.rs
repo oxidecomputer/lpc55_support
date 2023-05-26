@@ -195,7 +195,9 @@ pub struct CommandPacket {
 }
 
 impl CommandPacket {
-    fn new_command(c: CommandTag, args: Vec<u32>) -> CommandPacket {
+    fn new_command(c: CommandTag, args: impl Into<Vec<u32>>) -> CommandPacket {
+        let args = args.into();
+
         let mut v = VariablePacket {
             packet: FramingPacket::new(PacketType::Command),
             raw_command: RawCommand::new(c, args.len()),
@@ -458,7 +460,7 @@ pub fn read_response(
 pub fn send_command(
     port: &mut dyn serialport::SerialPort,
     cmd: CommandTag,
-    args: Vec<u32>,
+    args: impl Into<Vec<u32>>,
 ) -> Result<(), IspError> {
     let command_bytes = CommandPacket::new_command(cmd, args).to_bytes();
 
@@ -501,7 +503,7 @@ pub fn recv_data(port: &mut dyn serialport::SerialPort, cnt: u32) -> Result<Vec<
 pub fn do_isp_write_memory(
     port: &mut dyn serialport::SerialPort,
     address: u32,
-    data: Vec<u8>,
+    data: &[u8],
 ) -> Result<(), IspError> {
     let len = u32::try_from(data.len()).expect("can't send more than 4 GiB");
     let args = vec![address, len, 0x0];

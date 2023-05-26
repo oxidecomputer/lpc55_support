@@ -310,13 +310,9 @@ fn main() -> Result<()> {
 
             println!("If you didn't already erase the flash this operation will fail!");
             println!("This operation may take a while");
-            let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
+            let infile = std::fs::read(file)?;
 
-            let mut bytes = Vec::new();
-
-            infile.read_to_end(&mut bytes)?;
-
-            do_isp_write_memory(&mut *port, address, bytes)?;
+            do_isp_write_memory(&mut *port, address, &infile)?;
             println!("Write complete!");
         }
         ISPCommand::FlashEraseAll => {
@@ -341,22 +337,18 @@ fn main() -> Result<()> {
         ISPCommand::WriteCMPA { file } => {
             do_ping(&mut *port)?;
 
-            let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
+            let infile = std::fs::read(file)?;
 
-            let mut bytes = Vec::new();
-
-            infile.read_to_end(&mut bytes)?;
-
-            do_isp_write_memory(&mut *port, 0x9e400, bytes)?;
+            do_isp_write_memory(&mut *port, 0x9e400, &infile)?;
             println!("Write to CMPA done!");
         }
         ISPCommand::EraseCMPA => {
             do_ping(&mut *port)?;
 
             // Write 512 bytes of zero
-            let bytes = vec![0; 512];
+            let bytes = [0; 512];
 
-            do_isp_write_memory(&mut *port, 0x9e400, bytes)?;
+            do_isp_write_memory(&mut *port, 0x9e400, &bytes)?;
             println!("CMPA region erased!");
             println!("You can now boot unsigned images");
         }
@@ -465,7 +457,7 @@ fn main() -> Result<()> {
             }
 
             let new_bytes = new_cfpa.to_vec()?;
-            do_isp_write_memory(&mut *port, 0x9_de00, new_bytes)?;
+            do_isp_write_memory(&mut *port, 0x9_de00, &new_bytes)?;
             println!("Write to CFPA done!");
         }
         ISPCommand::Restore => {
@@ -492,7 +484,7 @@ fn main() -> Result<()> {
             byteorder::LittleEndian::write_u32(&mut bytes[0x130..0x134], 0xe7fee7fe);
 
             println!("Writing bytes");
-            do_isp_write_memory(&mut *port, 0x0, bytes.to_vec())?;
+            do_isp_write_memory(&mut *port, 0x0, &bytes)?;
 
             println!("Restore done! SWD should work now.");
         }
@@ -500,13 +492,9 @@ fn main() -> Result<()> {
             do_ping(&mut *port)?;
 
             println!("Sending SB file, this may take a while");
-            let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
+            let infile = std::fs::read(file)?;
 
-            let mut bytes = Vec::new();
-
-            infile.read_to_end(&mut bytes)?;
-
-            do_recv_sb_file(&mut *port, bytes)?;
+            do_recv_sb_file(&mut *port, &infile)?;
             println!("Send complete!");
         }
         ISPCommand::Enroll => {
@@ -541,7 +529,7 @@ fn main() -> Result<()> {
             // Write 3 * 512 bytes of 0
             let bytes = vec![0; 512 * 3];
 
-            do_isp_write_keystore(&mut *port, bytes)?;
+            do_isp_write_keystore(&mut *port, &bytes)?;
             do_save_keystore(&mut *port)?;
             println!("done.")
         }
@@ -558,7 +546,7 @@ fn main() -> Result<()> {
 
             actual_bytes.reverse();
 
-            do_isp_set_userkey(&mut *port, KeyType::SBKEK, actual_bytes)?;
+            do_isp_set_userkey(&mut *port, KeyType::SBKEK, &actual_bytes)?;
             println!("done.");
         }
         ISPCommand::SetupKeyStore { file } => {
@@ -585,7 +573,7 @@ fn main() -> Result<()> {
             actual_bytes.reverse();
 
             println!("Setting user key");
-            do_isp_set_userkey(&mut *port, KeyType::SBKEK, actual_bytes)?;
+            do_isp_set_userkey(&mut *port, KeyType::SBKEK, &actual_bytes)?;
 
             println!("Writing keystore");
             // Step 4: Write the keystore to persistent storage
