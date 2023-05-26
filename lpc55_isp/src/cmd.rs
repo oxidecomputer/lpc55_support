@@ -3,7 +3,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::isp::*;
-use anyhow::Result;
 
 enum DataPhase<'a> {
     NoData,
@@ -17,7 +16,7 @@ fn do_command(
     command_resp: ResponseCode,
     args: impl Into<Vec<u32>>,
     d: DataPhase,
-) -> Result<Option<Vec<u8>>> {
+) -> Result<Option<Vec<u8>>, IspError> {
     send_command(port, tag, args)?;
 
     read_response(port, command_resp)?;
@@ -39,7 +38,7 @@ fn do_command(
     Ok(ret)
 }
 
-pub fn do_save_keystore(port: &mut dyn serialport::SerialPort) -> Result<()> {
+pub fn do_save_keystore(port: &mut dyn serialport::SerialPort) -> Result<(), IspError> {
     do_command(
         port,
         CommandTag::KeyProvision,
@@ -56,7 +55,7 @@ pub fn do_save_keystore(port: &mut dyn serialport::SerialPort) -> Result<()> {
     Ok(())
 }
 
-pub fn do_enroll(port: &mut dyn serialport::SerialPort) -> Result<()> {
+pub fn do_enroll(port: &mut dyn serialport::SerialPort) -> Result<(), IspError> {
     do_command(
         port,
         CommandTag::KeyProvision,
@@ -68,7 +67,7 @@ pub fn do_enroll(port: &mut dyn serialport::SerialPort) -> Result<()> {
     Ok(())
 }
 
-pub fn do_generate_uds(port: &mut dyn serialport::SerialPort) -> Result<()> {
+pub fn do_generate_uds(port: &mut dyn serialport::SerialPort) -> Result<(), IspError> {
     do_command(
         port,
         CommandTag::KeyProvision,
@@ -87,7 +86,10 @@ pub fn do_generate_uds(port: &mut dyn serialport::SerialPort) -> Result<()> {
     Ok(())
 }
 
-pub fn do_isp_write_keystore(port: &mut dyn serialport::SerialPort, data: &[u8]) -> Result<()> {
+pub fn do_isp_write_keystore(
+    port: &mut dyn serialport::SerialPort,
+    data: &[u8],
+) -> Result<(), IspError> {
     do_command(
         port,
         CommandTag::KeyProvision,
@@ -102,7 +104,7 @@ pub fn do_isp_write_keystore(port: &mut dyn serialport::SerialPort, data: &[u8])
     Ok(())
 }
 
-pub fn do_recv_sb_file(port: &mut dyn serialport::SerialPort, data: &[u8]) -> Result<()> {
+pub fn do_recv_sb_file(port: &mut dyn serialport::SerialPort, data: &[u8]) -> Result<(), IspError> {
     do_command(
         port,
         CommandTag::ReceiveSbFile,
@@ -121,7 +123,7 @@ pub fn do_isp_set_userkey(
     port: &mut dyn serialport::SerialPort,
     key_type: KeyType,
     data: &[u8],
-) -> Result<()> {
+) -> Result<(), IspError> {
     do_command(
         port,
         CommandTag::KeyProvision,
@@ -147,7 +149,7 @@ pub fn do_isp_read_memory(
     port: &mut dyn serialport::SerialPort,
     address: u32,
     cnt: u32,
-) -> Result<Vec<u8>> {
+) -> Result<Vec<u8>, IspError> {
     let f = do_command(
         port,
         CommandTag::ReadMemory,
@@ -171,7 +173,7 @@ pub fn do_isp_write_memory(
     port: &mut dyn serialport::SerialPort,
     address: u32,
     data: &[u8],
-) -> Result<()> {
+) -> Result<(), IspError> {
     do_command(
         port,
         CommandTag::WriteMemory,
@@ -193,7 +195,7 @@ pub fn do_isp_write_memory(
     Ok(())
 }
 
-pub fn do_isp_flash_erase_all(port: &mut dyn serialport::SerialPort) -> Result<()> {
+pub fn do_isp_flash_erase_all(port: &mut dyn serialport::SerialPort) -> Result<(), IspError> {
     do_command(
         port,
         CommandTag::FlashEraseAll,
@@ -212,7 +214,7 @@ pub fn do_isp_flash_erase_region(
     port: &mut dyn serialport::SerialPort,
     start_address: u32,
     byte_count: u32,
-) -> Result<()> {
+) -> Result<(), IspError> {
     do_command(
         port,
         CommandTag::FlashEraseRegion,
@@ -232,7 +234,7 @@ pub fn do_isp_flash_erase_region(
 pub fn do_isp_get_property(
     port: &mut dyn serialport::SerialPort,
     prop: BootloaderProperty,
-) -> Result<Vec<u32>> {
+) -> Result<Vec<u32>, IspError> {
     send_command(port, CommandTag::GetProperty, [prop as u32])?;
 
     let f = read_response(port, ResponseCode::GetProperty)?;
@@ -240,7 +242,7 @@ pub fn do_isp_get_property(
     Ok(f)
 }
 
-pub fn do_isp_last_error(port: &mut dyn serialport::SerialPort) -> Result<Vec<u32>> {
+pub fn do_isp_last_error(port: &mut dyn serialport::SerialPort) -> Result<Vec<u32>, IspError> {
     send_command(
         port,
         CommandTag::GetProperty,
