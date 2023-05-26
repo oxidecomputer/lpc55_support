@@ -243,16 +243,10 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
     let image_type = BootField::unpack(image[0x24..0x28].try_into().unwrap())?;
 
     let load_addr = u32::from_le_bytes(image[0x34..0x38].try_into().unwrap());
-    let is_plain = image_type.img_type == EnumCatchAll::Enum(BootImageType::PlainImage);
 
     trace!("image length: {image_len:#x} ({image_len})");
     trace!("image type: {image_type:#?}");
     trace!("load address: {load_addr:#x}");
-    if is_plain && load_addr != 0 {
-        warn!("Load address is non-0 in a plain image",);
-    } else if !is_plain && load_addr == 0 {
-        warn!("Load address is 0 in a non-plain image",);
-    }
 
     info!("Checking TZM configuration");
     match secure_boot_cfg.tzm_image_type {
