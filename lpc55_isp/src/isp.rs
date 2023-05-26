@@ -2,17 +2,17 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use anyhow::{anyhow, Result};
 use crc_any::CRCu16;
-use num_derive::FromPrimitive;
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::FromPrimitive;
 use packed_struct::prelude::*;
-use std::cmp::min;
 use std::convert::TryInto;
 use strum_macros::EnumString;
+use thiserror::Error;
 
 #[repr(u8)]
-#[derive(Debug)]
-enum PacketType {
+#[derive(Copy, Clone, Debug)]
+pub enum PacketType {
     Ack = 0xA1,
     //Nak = 0xA2,
     AckAbort = 0xA3,
@@ -195,7 +195,7 @@ pub struct CommandPacket {
 }
 
 impl CommandPacket {
-    fn new_command(c: CommandTag, args: Vec<u32>) -> Result<CommandPacket> {
+    fn new_command(c: CommandTag, args: Vec<u32>) -> CommandPacket {
         let mut v = VariablePacket {
             packet: FramingPacket::new(PacketType::Command),
             raw_command: RawCommand::new(c, args.len()),
@@ -204,14 +204,14 @@ impl CommandPacket {
         let arg_bytes = args.len() * 4;
         // Total length of the command packet. the 4 bytes are for
         // the fixed fields
-        let len: u16 = (4 + arg_bytes) as u16;
+        let len: u16 = u16::try_from(4 + arg_bytes).expect("args vec too long for command packet");
 
         v.packet.length_low = (len & 0xFF) as u8;
         v.packet.length_high = ((len >> 8) & 0xff) as u8;
 
         let mut crc = CRCu16::crc16xmodem();
 
-        let bytes = v.pack()?;
+        let bytes = v.pack().unwrap();
 
         // CRC over everything except the CRC field, this includes the framing
         // header as well as the rest of the argument
@@ -227,22 +227,22 @@ impl CommandPacket {
         v.packet.crc16_low = (digest & 0xff) as u8;
         v.packet.crc16_high = ((digest >> 8) & 0xff) as u8;
 
-        Ok(CommandPacket {
+        CommandPacket {
             packet: v,
             params: args,
-        })
+        }
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>> {
+    fn to_bytes(&self) -> Vec<u8> {
         let mut v = Vec::new();
 
-        v.extend_from_slice(&self.packet.pack()?);
+        v.extend_from_slice(&self.packet.pack().unwrap());
 
         for e in self.params.iter() {
             v.extend_from_slice(&e.to_le_bytes());
         }
 
-        Ok(v)
+        v
     }
 }
 
@@ -252,8 +252,9 @@ pub struct DataPacket {
 }
 
 impl DataPacket {
-    fn new_data(args: Vec<u8>) -> Result<DataPacket> {
-        let arg_len: u16 = args.len() as u16;
+    fn new_data(args: impl Into<Vec<u8>>) -> DataPacket {
+        let args = args.into();
+        let arg_len = u16::try_from(args.len()).expect("args vector too long for DataPacket");
 
         let mut f = FramingPacket::new(PacketType::Data);
 
@@ -262,7 +263,7 @@ impl DataPacket {
 
         let mut crc = CRCu16::crc16xmodem();
 
-        let bytes = f.pack()?;
+        let bytes = f.pack().unwrap();
 
         crc.digest(&bytes[..0x4]);
         crc.digest(&bytes[0x6..]);
@@ -273,26 +274,26 @@ impl DataPacket {
         f.crc16_low = (digest & 0xff) as u8;
         f.crc16_high = ((digest >> 8) & 0xff) as u8;
 
-        Ok(DataPacket {
+        DataPacket {
             packet: f,
             data: args,
-        })
+        }
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>> {
+    fn to_bytes(&self) -> Vec<u8> {
         let mut v = Vec::new();
 
-        v.extend_from_slice(&self.packet.pack()?);
+        v.extend_from_slice(&self.packet.pack().unwrap());
         v.extend_from_slice(&self.data);
 
-        Ok(v)
+        v
     }
 }
 
-pub fn do_ping(port: &mut dyn serialport::SerialPort) -> Result<()> {
+pub fn do_ping(port: &mut dyn serialport::SerialPort) -> Result<(), IspError> {
     let ping = PacketHeader::new(PacketType::Ping);
 
-    let ping_bytes = ping.pack()?;
+    let ping_bytes = ping.pack().unwrap();
 
     port.write_all(&ping_bytes)?;
 
@@ -302,22 +303,19 @@ pub fn do_ping(port: &mut dyn serialport::SerialPort) -> Result<()> {
 
     port.read_exact(&mut response_bytes)?;
 
-    let response = PingResponse::unpack(&response_bytes)?;
+    let response = PingResponse::unpack(&response_bytes).map_err(IspError::Unpack)?;
 
     if response.header.packet_type != (PacketType::PingResponse as u8) {
-        return Err(anyhow!(
-            "Incorrect ACK byte from ping {:x}",
-            response.header.packet_type
-        ));
+        return Err(IspError::BadAck(response.header.packet_type));
     }
 
     Ok(())
 }
 
-fn send_ack(port: &mut dyn serialport::SerialPort) -> Result<()> {
+fn send_ack(port: &mut dyn serialport::SerialPort) -> Result<(), IspError> {
     let packet = PacketHeader::new(PacketType::Ack);
 
-    let bytes = packet.pack()?;
+    let bytes = packet.pack().unwrap();
 
     port.write_all(&bytes)?;
     port.flush()?;
@@ -325,50 +323,42 @@ fn send_ack(port: &mut dyn serialport::SerialPort) -> Result<()> {
     Ok(())
 }
 
-fn read_ack(port: &mut dyn serialport::SerialPort) -> Result<()> {
+fn read_ack(port: &mut dyn serialport::SerialPort) -> Result<(), IspError> {
     let mut ack_bytes: [u8; 2] = [0; 2];
 
     port.read_exact(&mut ack_bytes)?;
 
+    // Note: PacketHeader unpack should not be able to fail here
     let ack = PacketHeader::unpack_from_slice(&ack_bytes).unwrap();
 
     // Ack abort comes with a response packet explaining why
-    if ack.packet_type == (PacketType::AckAbort as u8) {
-        match read_response(port, ResponseCode::Generic) {
-            Ok(p) => {
-                if p.is_empty() {
-                    return Err(anyhow!("Response returned an unknown error code?"));
-                }
-                // The return value is always the first parameter
-                let retval = p[0];
-
-                return Err(retval2err(retval));
-            }
-            Err(e) => return Err(e),
+    if ack.packet_type == PacketType::AckAbort as u8 {
+        let p = read_response(port, ResponseCode::Generic)?;
+        if p.is_empty() {
+            return Err(IspError::MissingErrorCode);
         }
+        // The return value is always the first parameter
+        let retval = p[0];
+
+        return Err(retval2err(retval).into());
     }
 
     if ack.packet_type != (PacketType::Ack as u8) {
-        return Err(anyhow!("Incorrect ACK byte {:x}", ack.packet_type));
+        return Err(IspError::BadAck(ack.packet_type));
     }
 
     Ok(())
 }
 
-fn retval2err(retval: u32) -> anyhow::Error {
-    // Some more specific error messages.
-    if retval == 10203 {
-        anyhow!("Did you forget to erase the flash? (err 10203)")
-    } else if retval == 10101 {
-        anyhow!("Incorrect signature. Is the SBKEK set correctly? (err 10101)")
-    } else if retval == 10001 {
-        anyhow!("Security violation! (err 10001)")
+fn retval2err(retval: u32) -> StatusResponse {
+    if let Some(e) = KnownError::from_u32(retval) {
+        StatusResponse::Known(e)
     } else {
-        anyhow!("ISP error returned: {retval}")
+        StatusResponse::GenericErrorCode(retval)
     }
 }
 
-fn check_crc(frame_bytes: &[u8], response: &[u8], frame: &FramingPacket) -> Result<()> {
+fn check_crc(frame_bytes: &[u8], response: &[u8], frame: &FramingPacket) -> Result<(), IspError> {
     let mut crc = CRCu16::crc16xmodem();
     crc.digest(&frame_bytes[..0x4]);
     crc.digest(&frame_bytes[0x6..]);
@@ -379,43 +369,26 @@ fn check_crc(frame_bytes: &[u8], response: &[u8], frame: &FramingPacket) -> Resu
     if !(((digest & 0xff) == frame.crc16_low.into())
         && (((digest >> 8) & 0xff) == frame.crc16_high.into()))
     {
-        return Err(anyhow!(
-            "CRC failure on packet expect {:x}{:x} got {:x}",
-            frame.crc16_high,
-            frame.crc16_low,
-            digest
-        ));
+        return Err(IspError::CrcFailure {
+            expected: u16::from_le_bytes([frame.crc16_low, frame.crc16_high]),
+            got: digest,
+        });
     }
 
     Ok(())
 }
 
-pub fn read_data(port: &mut dyn serialport::SerialPort) -> Result<Vec<u8>> {
-    let mut frame_bytes = vec![0; FramingPacket::packed_bytes_size(None)?];
-    let mut cnt = 0;
-
-    while cnt != FramingPacket::packed_bytes_size(None)? {
-        let r = port.read(&mut frame_bytes[cnt..])?;
-        cnt += r;
-    }
+pub fn read_data(port: &mut dyn serialport::SerialPort) -> Result<Vec<u8>, IspError> {
+    let mut frame_bytes = vec![0; FramingPacket::packed_bytes_size(None).unwrap()];
+    port.read_exact(&mut frame_bytes)?;
 
     let frame = FramingPacket::unpack_from_slice(&frame_bytes).unwrap();
 
-    if frame.header.packet_type != (PacketType::Data as u8) {
-        return Err(anyhow!(
-            "Expected a data packet, got {:x} instead",
-            frame.header.packet_type
-        ));
-    }
+    require_frame_type(&frame, PacketType::Data)?;
 
-    cnt = 0;
-    let length: usize = (frame.length_low as usize) | ((frame.length_high as usize) << 8);
+    let length = usize::from(u16::from_le_bytes([frame.length_low, frame.length_high]));
     let mut response = vec![0; length];
-
-    while cnt != length {
-        let r = port.read(&mut response[cnt..])?;
-        cnt += r;
-    }
+    port.read_exact(&mut response)?;
 
     check_crc(&frame_bytes, &response, &frame)?;
 
@@ -427,54 +400,47 @@ pub fn read_data(port: &mut dyn serialport::SerialPort) -> Result<Vec<u8>> {
 pub fn read_response(
     port: &mut dyn serialport::SerialPort,
     response_type: ResponseCode,
-) -> Result<Vec<u32>> {
-    let mut frame_bytes = vec![0; FramingPacket::packed_bytes_size(None)?];
-    let mut cnt = 0;
-
-    while cnt != FramingPacket::packed_bytes_size(None)? {
-        let r = port.read(&mut frame_bytes[cnt..])?;
-        cnt += r;
-    }
+) -> Result<Vec<u32>, IspError> {
+    let mut frame_bytes = vec![0; FramingPacket::packed_bytes_size(None).unwrap()];
+    port.read_exact(&mut frame_bytes)?;
 
     let frame = FramingPacket::unpack_from_slice(&frame_bytes).unwrap();
 
     // A response packet is a specific type of command packet.
-    if frame.header.packet_type != (PacketType::Command as u8) {
-        return Err(anyhow!(
-            "Expected a command, got {:x}",
-            frame.header.packet_type
-        ));
-    }
+    require_frame_type(&frame, PacketType::Command)?;
 
-    cnt = 0;
-    let length: usize = (frame.length_low as usize) | ((frame.length_high as usize) << 8);
+    let length: usize = usize::from(u16::from_le_bytes([frame.length_low, frame.length_high]));
     let mut response = vec![0; length];
-
-    while cnt != length {
-        let r = port.read(&mut response[cnt..])?;
-        cnt += r;
-    }
+    port.read_exact(&mut response)?;
 
     check_crc(&frame_bytes, &response, &frame)?;
 
-    let command = RawCommand::unpack_from_slice(&response[..RawCommand::packed_bytes_size(None)?])?;
+    let command =
+        RawCommand::unpack_from_slice(&response[..RawCommand::packed_bytes_size(None).unwrap()])
+            .map_err(IspError::Unpack)?;
 
+    // Note: we tolerate A0 (generic response) here because many commands return
+    // it on failure instead of the expected response type.
     if command.tag != (response_type as u8) && command.tag != 0xA0 {
-        return Err(anyhow!(
-            "Expected a response type of {:x}, got {:x}",
-            response_type as u8,
-            command.tag
-        ));
+        return Err(IspError::WrongResponse {
+            expected: response_type,
+            got: command.tag,
+        });
     }
 
     let mut params: Vec<u32> = Vec::new();
-    let mut cnt = 0;
-    let mut index = RawCommand::packed_bytes_size(None)?;
+    let index = RawCommand::packed_bytes_size(None).unwrap();
 
-    while cnt < command.parameter_count {
-        params.push(u32::from_le_bytes(response[index..index + 4].try_into()?));
-        cnt += 1;
-        index += 4;
+    let end_of_params = index + usize::from(command.parameter_count) * 4;
+    let param_bytes = response
+        .get(index..end_of_params)
+        .ok_or(IspError::TruncatedParams {
+            expected_len: end_of_params,
+            actual_len: response.len(),
+        })?;
+
+    for p in param_bytes.chunks_exact(4) {
+        params.push(u32::from_le_bytes(p.try_into().unwrap()));
     }
 
     send_ack(port)?;
@@ -483,8 +449,7 @@ pub fn read_response(
     let retval = params[0];
 
     if retval != 0 {
-        // Some more specific error messages.
-        return Err(retval2err(retval));
+        return Err(retval2err(retval).into());
     } else {
         Ok(params)
     }
@@ -494,10 +459,8 @@ pub fn send_command(
     port: &mut dyn serialport::SerialPort,
     cmd: CommandTag,
     args: Vec<u32>,
-) -> Result<()> {
-    let command = CommandPacket::new_command(cmd, args)?;
-
-    let command_bytes = command.to_bytes()?;
+) -> Result<(), IspError> {
+    let command_bytes = CommandPacket::new_command(cmd, args).to_bytes();
 
     port.write_all(&command_bytes)?;
     port.flush()?;
@@ -507,40 +470,28 @@ pub fn send_command(
     Ok(())
 }
 
-pub fn send_data(port: &mut dyn serialport::SerialPort, data: &[u8]) -> Result<()> {
-    let mut cnt = 0;
-
+pub fn send_data(port: &mut dyn serialport::SerialPort, data: &[u8]) -> Result<(), IspError> {
     // Target doesn't like it when we send an entire binary in one pass
     // so break it down into 512 byte chunks which is what the existing
     // tools seem to use
-    while cnt < data.len() {
-        let end = min(data.len(), cnt + 512);
-
-        let data_packet = DataPacket::new_data(data[cnt..end].to_vec())?;
-
-        let data_bytes = data_packet.to_bytes()?;
+    for chunk in data.chunks(512) {
+        let data_bytes = DataPacket::new_data(chunk).to_bytes();
 
         port.write_all(&data_bytes)?;
         port.flush()?;
 
         read_ack(port)?;
-        cnt += 512;
     }
 
     Ok(())
 }
 
-pub fn recv_data(port: &mut dyn serialport::SerialPort, cnt: u32) -> Result<Vec<u8>> {
-    let mut data = Vec::new();
-    let mut received: usize = 0;
+pub fn recv_data(port: &mut dyn serialport::SerialPort, cnt: u32) -> Result<Vec<u8>, IspError> {
+    let cnt = cnt as usize;
+    let mut data = Vec::with_capacity(cnt);
 
-    while received < (cnt as usize) {
-        let d = read_data(port)?;
-
-        data.extend_from_slice(&d);
-
-        received += d.len();
-
+    while data.len() < cnt {
+        data.extend_from_slice(&read_data(port)?);
         send_ack(port)?;
     }
 
@@ -551,8 +502,9 @@ pub fn do_isp_write_memory(
     port: &mut dyn serialport::SerialPort,
     address: u32,
     data: Vec<u8>,
-) -> Result<()> {
-    let args = vec![address, data.len() as u32, 0x0];
+) -> Result<(), IspError> {
+    let len = u32::try_from(data.len()).expect("can't send more than 4 GiB");
+    let args = vec![address, len, 0x0];
 
     send_command(port, CommandTag::WriteMemory, args)?;
 
@@ -565,7 +517,7 @@ pub fn do_isp_write_memory(
     Ok(())
 }
 
-pub fn do_isp_flash_erase_all(port: &mut dyn serialport::SerialPort) -> Result<()> {
+pub fn do_isp_flash_erase_all(port: &mut dyn serialport::SerialPort) -> Result<(), IspError> {
     let args = vec![
         // Erase internal flash
         0x0_u32,
@@ -582,7 +534,7 @@ pub fn do_isp_flash_erase_region(
     port: &mut dyn serialport::SerialPort,
     start_address: u32,
     byte_count: u32,
-) -> Result<()> {
+) -> Result<(), IspError> {
     let args = vec![
         start_address,
         byte_count,
@@ -593,5 +545,107 @@ pub fn do_isp_flash_erase_region(
 
     read_response(port, ResponseCode::Generic)?;
 
+    Ok(())
+}
+
+/// Errors encountered during ISP interaction with the LPC55.
+#[derive(Debug, Error)]
+pub enum IspError {
+    /// In a situation where we needed an ACK, we got something else.
+    #[error("Expected ACK (0xA1), got: {0:#x}")]
+    BadAck(u8),
+
+    /// In a situation where our understanding of the protocol suggested that
+    /// the next packet should be of type `expected`, we instead got a packet of
+    /// type `got`.
+    #[error("Expected a {expected:?} packet, got {got:#02x}")]
+    WrongPacket { expected: PacketType, got: u8 },
+
+    /// We got the packet we were expecting but it contained an unexpcted
+    /// response code.
+    #[error("Expected a response code {expected:?}, got {got:#02x}")]
+    WrongResponse { expected: ResponseCode, got: u8 },
+
+    /// The command packet contains a parameter count, which is the number of
+    /// 32-bit parameters contained therein. It's encapsulated in a framing
+    /// packet that contains a length. This means the two can be _mismatched._
+    ///
+    /// This error is returned if a command packet claims to have more
+    /// parameters than could fit in its enclosing framing packet.
+    #[error(
+        "Command packet claimed to have {expected_len} bytes of params, \
+        had {actual_len}"
+    )]
+    TruncatedParams {
+        expected_len: usize,
+        actual_len: usize,
+    },
+
+    /// We got a GenericResponse after a command (common) but it was ... empty?
+    /// We've never seen this in the field and it would likely indicate a crash
+    /// or other bug in the bootloader.
+    #[error("GenericResponse was empty, should have contained an error code")]
+    MissingErrorCode,
+
+    /// Framing packets are protected by a reasonably sturdy CRC16; this error
+    /// almost certainly indicates signal integrity issues.
+    #[error("Incorrect CRC on packet; expected {expected:#x}, got {got:#x}")]
+    CrcFailure { expected: u16, got: u16 },
+
+    /// Communication went fine, but the packet we got back indicated that the
+    /// _operation_ we requested failed thus.
+    #[error("ISP returned an error status in response")]
+    ErrorStatus(#[from] StatusResponse),
+
+    /// Packet contained an invalid value for an enum field or other case that
+    /// caused `packed_struct` to refuse to unpack it.
+    // NOTE: this variant deliberately does not have a #[from] annotation
+    // because pack and unpack use the same error type, frustratingly, giving us
+    // no way of distinguishing the two in a From impl.
+    #[error("unpacking response failed")]
+    Unpack(#[source] packed_struct::PackingError),
+
+    /// Our actual use of the serial port failed.
+    #[error("Communications error")]
+    Comms(#[from] std::io::Error),
+}
+
+/// Describes a non-success status returned by a command.
+#[derive(Debug, Error)]
+pub enum StatusResponse {
+    /// In cases where we can sucessfully turn the numeric status into a
+    /// `KnownError`, we'll do so and use this variant.
+    #[error(transparent)]
+    Known(#[from] KnownError),
+
+    /// This variant is for other cases, errors we haven't felt like adding to
+    /// `KnownError` yet (probably because we don't hit them very often).
+    // NOTE: the NXP docs list all error codes in decimal, so we do the same
+    // here.
+    #[error("ISP returned error {0}")]
+    GenericErrorCode(u32),
+}
+
+/// Error codes that we've hit often enough to give them names and explanatory
+/// messages.
+///
+/// See LPC55 User Manual chapter 8.7 table 251 for more.
+#[derive(Debug, FromPrimitive, Copy, Clone, Eq, PartialEq, ToPrimitive, Error)]
+pub enum KnownError {
+    #[error("Cumulative write error (did you forget to erase?) (err 10203)")]
+    CumulativeWriteError = 10203,
+    #[error("Incorrect signature or version (err 10101)")]
+    IncorrectSignature = 10101,
+    #[error("Security violation (err 10001)")]
+    SecurityViolation = 10001,
+}
+
+fn require_frame_type(frame: &FramingPacket, ty: PacketType) -> Result<(), IspError> {
+    if frame.header.packet_type != ty as u8 {
+        return Err(IspError::WrongPacket {
+            expected: ty,
+            got: frame.header.packet_type,
+        });
+    }
     Ok(())
 }
