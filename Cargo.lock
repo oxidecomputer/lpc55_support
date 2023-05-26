@@ -521,7 +521,7 @@ dependencies = [
 
 [[package]]
 name = "lpc55_isp"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -537,6 +537,7 @@ dependencies = [
  "sha2",
  "strum",
  "strum_macros",
+ "thiserror",
 ]
 
 [[package]]
