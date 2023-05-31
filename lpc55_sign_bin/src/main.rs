@@ -261,6 +261,18 @@ enum Command {
         #[clap(flatten)]
         debug_settings: DebugSettings,
     },
+    /// Load a CMPA from a file and display it in parsed form.
+    PrintCmpa {
+        path: PathBuf,
+        #[clap(long, short)]
+        raw: bool,
+    },
+    /// Load a CFPA from a file and display it in parsed form.
+    PrintCfpa {
+        path: PathBuf,
+        #[clap(long, short)]
+        raw: bool,
+    },
 }
 
 #[derive(Debug, Parser)]
@@ -616,6 +628,161 @@ fn main() -> Result<()> {
         }
         Command::GenDebugCfg { debug_settings } => {
             println!("{}", toml::to_string_pretty(&debug_settings)?);
+        }
+        Command::PrintCmpa { path, raw } => {
+            let bytes =
+                std::fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
+            let bytes: &[u8; 512] = bytes[..]
+                .try_into()
+                .map_err(|_| anyhow!("CMPA file is not 512 bytes long"))?;
+            let cmpa = CMPAPage::from_bytes(bytes).context("parsing CMPA contents")?;
+
+            if raw {
+                println!("--- BEGIN CMPA RAW CONTENTS ---");
+                println!("{cmpa:#?}");
+                println!("--- END CMPA RAW CONTENTS ---");
+            } else {
+                println!("--- BEGIN CMPA CONTENTS ---");
+                let boot_cfg = cmpa.get_boot_cfg().context("parsing bits as BootCfg")?;
+                println!("boot_cfg = {boot_cfg:#?}");
+                println!("spi_flash_cfg = {}", cmpa.spi_flash_cfg);
+                println!("usb_id = {}", cmpa.usb_id);
+                println!("sdio_cfg = {}", cmpa.sdio_cfg);
+                println!(
+                    "cc_socu_pin = {:#?}",
+                    cmpa.get_cc_socu_pin().context("Parsing CC SOCU PIN")?
+                );
+                println!(
+                    "cc_socu_dflt = {:#?}",
+                    cmpa.get_cc_socu_dflt().context("Parsing CC SOCU DFLT")?
+                );
+                println!("vendor_usage = {}", cmpa.vendor_usage);
+                println!(
+                    "secure_boot_cfg = {:#?}",
+                    cmpa.get_secure_boot_cfg()
+                        .context("Parsing SecureBootCfg")?
+                );
+                println!("prince_base_addr = {}", cmpa.prince_base_addr);
+                println!("prince_sr_0 = {}", cmpa.prince_sr_0);
+                println!("prince_sr_1 = {}", cmpa.prince_sr_1);
+                println!("prince_sr_2 = {}", cmpa.prince_sr_2);
+                println!(
+                    "xtal_32khz_capabank_trim = {}",
+                    cmpa.xtal_32khz_capabank_trim
+                );
+                println!(
+                    "xtal_16khz_capabank_trim = {}",
+                    cmpa.xtal_16khz_capabank_trim
+                );
+                println!("flash_remap_size = {}", cmpa.flash_remap_size);
+                if cmpa.blank1 == [0; 20] {
+                    println!("blank1 = (zeroes)");
+                } else {
+                    println!("blank1 = {:?}", cmpa.blank1);
+                }
+                print!("rotkh = ");
+                for byte in &cmpa.rotkh {
+                    print!("{byte:02x}");
+                }
+                println!();
+                for (i, b) in [
+                    &cmpa.blank2[..],
+                    &cmpa.blank3,
+                    &cmpa.blank4,
+                    &cmpa.blank5,
+                    &cmpa.blank6,
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let n = i + 2;
+                    if b.iter().all(|byte| *byte == 0) {
+                        println!("blank{n} = (zeroes)");
+                    } else {
+                        println!("blank{n} = {:?}", b);
+                    }
+                }
+                println!("Customer defined area:");
+                for chunk in [
+                    &cmpa.customer_defined0,
+                    &cmpa.customer_defined1,
+                    &cmpa.customer_defined2,
+                    &cmpa.customer_defined3,
+                    &cmpa.customer_defined4,
+                    &cmpa.customer_defined5,
+                    &cmpa.customer_defined6,
+                ] {
+                    print!("  ");
+                    for byte in chunk {
+                        print!("{byte:02x}");
+                    }
+                    println!();
+                }
+                print!("sha256 = ");
+                for byte in cmpa.sha256_digest {
+                    print!("{byte:02x}");
+                }
+                println!();
+                println!("--- END CMPA CONTENTS ---");
+            }
+        }
+        Command::PrintCfpa { path, raw } => {
+            let bytes =
+                std::fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
+            let bytes: &[u8; 512] = bytes[..]
+                .try_into()
+                .map_err(|_| anyhow!("CFPA file is not 512 bytes long"))?;
+            let cfpa = CFPAPage::from_bytes(bytes).context("parsing CFPA contents")?;
+
+            if raw {
+                println!("--- BEGIN CFPA RAW CONTENTS ---");
+                println!("{cfpa:#?}");
+                println!("--- END CFPA RAW CONTENTS ---");
+            } else {
+                println!("--- BEGIN CFPA CONTENTS ---");
+                println!("header = {}", cfpa.header);
+                println!("version = {}", cfpa.version);
+                println!("secure_firmware_version = {}", cfpa.secure_firmware_version);
+                println!("nonsecure_firmware_version = {}", cfpa.ns_fw_version);
+                println!("image_key_revoke = {}", cfpa.image_key_revoke);
+                println!("reserved = {}", cfpa.reserved);
+                println!("rkth_revoke = {:#?}", cfpa.get_rkth_revoke()?);
+                println!("vendor = {}", cfpa.vendor);
+                println!("cc_socu_ns_pin = {:#?}", cfpa.get_cc_socu_ns_pin()?);
+                println!("cc_socu_ns_dflt = {:#?}", cfpa.get_cc_socu_ns_dflt()?);
+                println!("enable_fa_mode = {}", cfpa.enable_fa_mode);
+                println!("cmpa_prog_in_progress = {}", cfpa.cmpa_prog_in_progress);
+                println!("prince_region0_code0 = {:?}", cfpa.prince_region0_code0);
+                println!("prince_region0_code1 = {:?}", cfpa.prince_region0_code1);
+                println!("prince_region1_code0 = {:?}", cfpa.prince_region1_code0);
+                println!("prince_region1_code1 = {:?}", cfpa.prince_region1_code1);
+                println!("prince_region2_code0 = {:?}", cfpa.prince_region2_code0);
+                println!("prince_region2_code1 = {:?}", cfpa.prince_region2_code1);
+                println!("mysterious1 = {:?}", cfpa.mysterious1);
+                println!("mysterious2 = {:?}", cfpa.mysterious2);
+                println!("customer defined:");
+                for chunk in [
+                    &cfpa.customer_defined0,
+                    &cfpa.customer_defined1,
+                    &cfpa.customer_defined2,
+                    &cfpa.customer_defined3,
+                    &cfpa.customer_defined4,
+                    &cfpa.customer_defined5,
+                    &cfpa.customer_defined6,
+                ] {
+                    print!("  ");
+                    for byte in chunk {
+                        print!("{byte:02x}");
+                    }
+                    println!();
+                }
+                print!("sha256 = ");
+                for byte in cfpa.sha256_digest {
+                    print!("{byte:02x}");
+                }
+                println!();
+                println!("--- END CFPA CONTENTS ---");
+            }
         }
     }
 
