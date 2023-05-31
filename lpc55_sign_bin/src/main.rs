@@ -273,6 +273,11 @@ enum Command {
         #[clap(long, short)]
         raw: bool,
     },
+    /// Generate RKTH and ROTKH for a set of root certificates
+    GenRootHashes {
+        #[clap(flatten)]
+        certs: CertArgs,
+    },
 }
 
 #[derive(Debug, Parser)]
@@ -783,6 +788,18 @@ fn main() -> Result<()> {
                 println!();
                 println!("--- END CFPA CONTENTS ---");
             }
+        }
+        Command::GenRootHashes { certs } => {
+            let cfg: CertConfig = certs.try_into_config()?;
+            let root_certs = pad_roots(read_certs(&cfg.root_certs)?)?;
+
+            for (i, cert) in root_certs.iter().enumerate() {
+                let rkth = signed_image::root_key_hash(cert.as_ref())?;
+                println!("rkth{i} = {}", hex::encode(rkth));
+            }
+
+            let rotkh = signed_image::root_key_table_hash(&root_certs)?;
+            println!("rotkh = {}", hex::encode(rotkh));
         }
     }
 
