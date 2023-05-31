@@ -290,7 +290,7 @@ struct CertArgs {
     ///
     /// Cannot be combined with the `--cert-cfg` option.
     #[clap(long)]
-    root_cert: Option<PathBuf>,
+    root_cert: Vec<PathBuf>,
 
     /// Path to a TOML file specifying the cert configuration. This file can
     /// contain three top-level keys, all optional. `private-key` gives the path
