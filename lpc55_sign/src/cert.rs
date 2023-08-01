@@ -7,6 +7,26 @@ use rsa::{RsaPrivateKey, RsaPublicKey};
 use std::path::PathBuf;
 use x509_cert::Certificate;
 
+pub const CERT_END: &str = "-----END CERTIFICATE-----\n";
+
+/// Parse PEM X.509 certificates from a string
+pub fn read_pem_certs_str(s: &str) -> Result<Vec<Certificate>, Error> {
+    let split = s.split_inclusive(CERT_END);
+    // We have no way of knowing the length unfortunately
+    let mut certs = Vec::new();
+    for c in split {
+        if c.starts_with("-----BEGIN CERTIFICATE-----\n") {
+            let (label, der) = pem_rfc7468::decode_vec(c.as_bytes())?;
+            if label != "CERTIFICATE" {
+                return Err(Error::PemLabel(label.to_string()));
+            }
+            let cert = Certificate::from_der(&der)?;
+            certs.push(cert);
+        }
+    }
+    Ok(certs)
+}
+
 /// Read and parse X.509 certificates from DER or PEM encoded files.
 pub fn read_certs(paths: &[PathBuf]) -> Result<Vec<Certificate>, Error> {
     let mut certs = Vec::with_capacity(paths.len());
