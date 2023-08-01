@@ -33,8 +33,9 @@ pub struct CertConfig {
     pub root_certs: Vec<PathBuf>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Copy, Clone, Debug, Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
+#[serde(deny_unknown_fields)]
 pub struct DiceArgs {
     #[cfg_attr(feature = "clap", clap(long))]
     #[serde(default, rename = "enable-dice")]
