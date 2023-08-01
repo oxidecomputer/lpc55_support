@@ -483,8 +483,10 @@ fn main() -> Result<()> {
         } => {
             let cfg = certs.try_into_config()?;
             let Some(private_key) = cfg.private_key.as_ref() else {
-                bail!("sign-image requires a private key to be provided as an \
-                       arg or in the cert-cfg.");
+                bail!(
+                    "sign-image requires a private key to be provided as an \
+                       arg or in the cert-cfg."
+                );
             };
             let private_key = read_rsa_private_key(private_key)?;
             let image = std::fs::read(src_bin)?;
