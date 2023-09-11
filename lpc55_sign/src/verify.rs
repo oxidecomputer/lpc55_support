@@ -28,6 +28,14 @@ macro_rules! error {
     }
 }
 
+/// Configures verify logging to only print failures
+pub fn log_verify_only_on_failure() {
+    let mut builder = env_logger::Builder::from_default_env();
+    builder
+        .filter(Some("lpc55_sign"), log::LevelFilter::Warn)
+        .init();
+}
+
 /// Initializes a logger that pretty-prints logging from `verify_image`
 pub fn init_verify_logger(verbose: bool) {
     let mut builder = env_logger::Builder::from_default_env();
