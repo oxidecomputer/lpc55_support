@@ -451,7 +451,7 @@ pub fn read_response(
     let retval = params[0];
 
     if retval != 0 {
-        return Err(retval2err(retval).into());
+        Err(retval2err(retval).into())
     } else {
         Ok(params)
     }
@@ -512,7 +512,7 @@ pub fn do_isp_write_memory(
 
     read_response(port, ResponseCode::Generic)?;
 
-    send_data(port, &data)?;
+    send_data(port, data)?;
 
     read_response(port, ResponseCode::Generic)?;
 
