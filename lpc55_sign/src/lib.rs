@@ -113,4 +113,86 @@ pub enum Error {
 
     #[error("Debug challenge is {0} bytes, expected 104 bytes")]
     DebugAuthChallengeWrongSize(usize),
+
+    #[error("CMPA digest does not match expected hash")]
+    CmpaDigestMismatch,
+
+    #[error(
+        "Secure boot is enabled but ROTKH is all zeros which implies no root certs are configured"
+    )]
+    NoRootCerts,
+
+    #[error("Secure boot enabled but no RTKH table slots are enabled")]
+    NoRtkhEnabled,
+
+    #[error(
+        "{0}.CC_SOCU_PIN is invalid {1}; the top and bottom u16s must be inverses of each other"
+    )]
+    InvalidCCSOCUPIN(String, u32),
+
+    #[error(
+        "{0}.CC_SOCU_DFLT is invalid {1}; the top and bottom u16s must be inverses of each other"
+    )]
+    InvalidCCSOCUDFLT(String, u32),
+
+    #[error("Illegal configuration: bit {1} of {0}.CC_SOCU_* is set in CC_SOCU_DFLT but unset in CC_SOCU_PIN")]
+    IllegalSocu(String, usize),
+
+    #[error("IMAGE_KEY_REVOKE ({0}) should be a unary counter but isn't")]
+    BadImageKeyRevoke(usize),
+
+    #[error("Error with TZ Preset settings")]
+    TzPresetErr,
+
+    #[error("Secure Boot not enabled")]
+    NoSecureBoot,
+
+    #[error("Certificate header does not begin with 'cert'")]
+    MissingCertHeader,
+
+    #[error("Invalid image length in cert header: expected {0}, got {1}")]
+    InvalidImageLen(u32, u32),
+
+    #[error("Certificate public key size ({0} bits) does not match CMPA config ({1})")]
+    InvalidPubkeySize(usize, usize),
+
+    #[error("Unsupported signature algorithm: {0}. Only sha256WithRSAEncryption is supported.")]
+    UnsupportedAlgorithm(String),
+
+    #[error("Failed to verify certificate signature: {0}")]
+    BadCertSignature(String),
+
+    #[error("ROTKH in CMPA does not match RKH table in image")]
+    RotkhMismatch,
+
+    #[error("RKH table slot {0} is disabled in CFPA")]
+    KeyDisabled(usize),
+
+    #[error("RKH table slot {0} is revoked in CFPA")]
+    KeyRevoked(usize),
+
+    #[error("Root certificate's public key is not in RKH table")]
+    PubkeyNotInTable,
+
+    #[error(
+        "Last certificate's serial number has wrong magic prefix.  Expected 0x3cc3.  Found 0x{0}"
+    )]
+    BadSerialPrefix(String),
+
+    #[error(
+        "Last certificate's revocation ID (0x{0}) does not match CFPA IMAGE_KEY_REVOKE (0x{1})"
+    )]
+    BadRevocation(u16, u16),
+
+    #[error("CRC32 does not match")]
+    BadCrc,
+
+    #[error("Secure boot is enabled but the image is not secure")]
+    NotASecureImage,
+
+    #[error("Image length is listed as longer than actual image")]
+    ImageLengthTooLong,
+
+    #[error("fmt error: {0}")]
+    FmtError(#[from] std::fmt::Error),
 }
