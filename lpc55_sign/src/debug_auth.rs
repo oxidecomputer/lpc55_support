@@ -23,20 +23,20 @@ pub struct DebugAuthChallenge {
     // NXP's spsdk tooling implements it as done here: two little-endian u16s
     // with version_major at the lower offset.  See
     // https://github.com/nxp-mcuxpresso/spsdk/blob/5da31d96a020bd65e5834ea5ac1b68327ea965ef/spsdk/dat/dac_packet.py#L114.
-    version_major: U16<LittleEndian>,
-    version_minor: U16<LittleEndian>,
+    pub version_major: U16<LittleEndian>,
+    pub version_minor: U16<LittleEndian>,
 
-    socc: U32<LittleEndian>,
-    uuid: [u8; 16],
+    pub socc: U32<LittleEndian>,
+    pub uuid: [u8; 16],
 
-    rotk_revoke: U32<LittleEndian>,
-    rotkh: [u8; 32],
+    pub rotk_revoke: U32<LittleEndian>,
+    pub rotkh: [u8; 32],
 
-    cc_socu_pin: U32<LittleEndian>,
-    cc_socu_dflt: U32<LittleEndian>,
-    vendor_usage: U32<LittleEndian>,
+    pub cc_socu_pin: U32<LittleEndian>,
+    pub cc_socu_dflt: U32<LittleEndian>,
+    pub vendor_usage: U32<LittleEndian>,
 
-    challenge_vector: [u8; 32],
+    pub challenge_vector: [u8; 32],
 }
 
 #[derive(Debug, Deserialize, Serialize)]
