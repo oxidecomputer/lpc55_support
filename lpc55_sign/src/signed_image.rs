@@ -14,6 +14,68 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use x509_cert::Certificate;
 
+/// Combined structure definine both CMPA/CFPA
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MfgCfg {
+    pub cfpa: CfpaCfg,
+    pub cmpa: CmpaCfg,
+}
+
+
+/// Structure defining a CFPA configuration
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CfpaCfg {
+    rkth0: ROTKeyStatus,
+    rkth1: ROTKeyStatus,
+    rkth2: ROTKeyStatus,
+    rkth3: ROTKeyStatus,
+    debug: DebugSettings,
+    image_key_revoke: u16,
+}
+
+impl CfpaCfg {
+    pub fn generate(&self) -> Result<CFPAPage, Error> {
+        generate_cfpa(
+            self.debug,
+            [self.rkth0, self.rkth1, self.rkth2, self.rkth3],
+            self.image_key_revoke,
+        )
+    }
+}
+
+/// Structure defining a CMPA configuration
+/// note the ROTKH and lock fields are purposely omitted
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CmpaCfg {
+    secure_boot: bool,
+    dice: DiceArgs,
+    default_isp: DefaultIsp,
+    boot_speed: BootSpeed,
+    boot_err_pin: u8,
+    boot_err_port: u8,
+    debug: DebugSettings,
+    only_rsa_4096: bool,
+}
+
+impl CmpaCfg {
+    pub fn generate(&self, lock: bool, rotkh: [u8; 32]) -> Result<CMPAPage, Error> {
+        generate_cmpa(
+            self.dice,
+            self.secure_boot,
+            self.debug,
+            self.default_isp,
+            self.boot_speed,
+            BootErrorPin::new(self.boot_err_port, self.boot_err_pin).unwrap(),
+            rotkh,
+            lock,
+            self.only_rsa_4096,
+        )
+    }
+}
+
 /// Struct defining the TOML format for `--cert-cfg`, which bundles up flags
 /// that would otherwise need to appear on the command line.
 #[derive(Clone, Debug, Deserialize, Serialize)]

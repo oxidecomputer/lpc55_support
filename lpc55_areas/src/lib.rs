@@ -446,7 +446,7 @@ impl DefaultIsp {
     }
 }
 
-#[derive(PrimitiveEnum, Copy, Clone, Debug)]
+#[derive(PrimitiveEnum, Copy, Clone, Debug, Deserialize)]
 pub enum BootSpeed {
     Nmpa = 0b00,
     Fro48mhz = 0b10,
