@@ -22,7 +22,6 @@ pub struct MfgCfg {
     pub cmpa: CmpaCfg,
 }
 
-
 /// Structure defining a CFPA configuration
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
