@@ -511,7 +511,7 @@ dependencies = [
 
 [[package]]
 name = "lpc55_areas"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "bitfield",
  "clap",
@@ -542,7 +542,7 @@ dependencies = [
 
 [[package]]
 name = "lpc55_sign"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "byteorder",
  "clap",
