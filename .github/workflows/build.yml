@@ -24,7 +24,7 @@ jobs:
 
       # cache the cargo registry & index
       - name: Cache cargo outputs
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -33,7 +33,7 @@ jobs:
 
       # cache our build outputs
       - name: Cache build outputs
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             target
