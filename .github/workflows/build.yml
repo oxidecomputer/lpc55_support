@@ -44,3 +44,5 @@ jobs:
         with:
           command: build
 
+      - name: Dirty worktree check
+        run: git diff HEAD --exit-code
