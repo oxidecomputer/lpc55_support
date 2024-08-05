@@ -1,5 +1,4 @@
 use crate::Error;
-use const_oid;
 use der::{Decode as _, Encode as _, Reader as _};
 use rsa::pkcs1::{DecodeRsaPrivateKey, DecodeRsaPublicKey};
 use rsa::pkcs8::DecodePrivateKey;

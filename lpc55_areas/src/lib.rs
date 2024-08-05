@@ -5,7 +5,6 @@
 use std::fmt::Debug;
 
 use packed_struct::prelude::*;
-use packed_struct::PackingError;
 use serde::{Deserialize, Serialize};
 
 // Table 183, section 7.3.4
