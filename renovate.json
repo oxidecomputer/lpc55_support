@@ -4,6 +4,8 @@
     "local>oxidecomputer/renovate-config"
   ],
   "reviewers": [
-    "kc8apf"
+    "labbott",
+    "lzrd",
+    "flihp",
   ]
 }
