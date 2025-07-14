@@ -6,6 +6,7 @@ members = [
     "lpc55_sign",
     "lpc55_sign_bin",
     "lpc55_isp",
+    "measurement_token",
 ]
 resolver = "2"
 
