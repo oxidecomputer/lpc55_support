@@ -3,10 +3,18 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use std::fmt::Debug;
+use std::ops::Range;
 
 use packed_struct::prelude::*;
 use packed_struct::PackingError;
 use serde::{Deserialize, Serialize};
+
+// Fig 17, section 7.3.4
+pub const HEADER_IMAGE_LENGTH: Range<usize> = 0x20..0x24;
+pub const HEADER_IMAGE_TYPE: Range<usize> = 0x24..0x28;
+pub const HEADER_OFFSET: Range<usize> = 0x28..0x2c;
+pub const HEADER_LOAD_ADDR: Range<usize> = 0x34..0x38;
+pub const HEADER_SIGNATURE: [u8; 4] = *b"cert";
 
 // Table 183, section 7.3.4
 #[derive(PrimitiveEnum, Copy, Clone, Debug, Eq, PartialEq)]
@@ -666,7 +674,7 @@ impl CertHeader {
     pub fn new(cert_header_size: usize, cert_table_len: usize) -> CertHeader {
         CertHeader {
             // This 'signature' is just a simple marker
-            signature: *b"cert",
+            signature: HEADER_SIGNATURE,
             header_version: 1,
             header_length: cert_header_size as u32,
             // Need to be 0 for now

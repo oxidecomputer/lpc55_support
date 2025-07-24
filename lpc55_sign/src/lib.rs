@@ -156,6 +156,9 @@ pub enum Error {
     #[error("Certificate public key size ({0} bits) does not match CMPA config ({1})")]
     InvalidPubkeySize(usize, usize),
 
+    #[error("Signature offset {0} != total image length {1}")]
+    InvalidSignatureOffset(usize, u32),
+
     #[error("Unsupported signature algorithm: {0}. Only sha256WithRSAEncryption is supported.")]
     UnsupportedAlgorithm(String),
 
@@ -195,4 +198,7 @@ pub enum Error {
 
     #[error("fmt error: {0}")]
     FmtError(#[from] std::fmt::Error),
+
+    #[error(transparent)]
+    TryFromSliceError(#[from] std::array::TryFromSliceError),
 }

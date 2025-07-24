@@ -5,7 +5,10 @@
 use crate::Error;
 use byteorder::ByteOrder;
 use crc_any::CRCu32;
-use lpc55_areas::{BootField, BootImageType};
+use lpc55_areas::{
+    BootField, BootImageType, HEADER_IMAGE_LENGTH, HEADER_IMAGE_TYPE, HEADER_LOAD_ADDR,
+    HEADER_OFFSET,
+};
 use packed_struct::prelude::*;
 use std::path::Path;
 
@@ -23,14 +26,14 @@ pub fn update_crc(src: &Path, dest: &Path, address: u32) -> Result<(), Error> {
     //
 
     let len = bytes.len();
-    byteorder::LittleEndian::write_u32(&mut bytes[0x20..0x24], len as u32);
+    byteorder::LittleEndian::write_u32(&mut bytes[HEADER_IMAGE_LENGTH], len as u32);
 
     // indicates TZ image and plain CRC XIP image
     // See 7.5.3.1 for details on why we need the TZ bit
     let boot_field = BootField::new(BootImageType::CRCImage);
-    bytes[0x24..0x28].clone_from_slice(&boot_field.pack()?);
+    bytes[HEADER_IMAGE_TYPE].clone_from_slice(&boot_field.pack()?);
 
-    byteorder::LittleEndian::write_u32(&mut bytes[0x34..0x38], address);
+    byteorder::LittleEndian::write_u32(&mut bytes[HEADER_LOAD_ADDR], address);
 
     // The CRC algorithm NXP uses is crc32 / MPEG-2
     // poly: 0x04c11db7
@@ -40,10 +43,10 @@ pub fn update_crc(src: &Path, dest: &Path, address: u32) -> Result<(), Error> {
     let mut crc = CRCu32::crc32mpeg2();
 
     // Now calculate the CRC on everything except the bytes where the CRC goes
-    crc.digest(&bytes[..0x28]);
-    crc.digest(&bytes[0x2c..]);
+    crc.digest(&bytes[..HEADER_OFFSET.start]);
+    crc.digest(&bytes[HEADER_OFFSET.end..]);
 
-    byteorder::LittleEndian::write_u32(&mut bytes[0x28..0x2c], crc.get_crc());
+    byteorder::LittleEndian::write_u32(&mut bytes[HEADER_OFFSET], crc.get_crc());
 
     std::fs::write(dest, &bytes)?;
     Ok(())
