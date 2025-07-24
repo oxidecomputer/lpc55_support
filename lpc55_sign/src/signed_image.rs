@@ -192,18 +192,21 @@ pub fn stamp_image(
     let total_len = signed_len + sig_len;
 
     // Start writing the image header: first the total image length.
-    LittleEndian::write_u32(&mut image_bytes[0x20..0x24], total_len as u32);
+    LittleEndian::write_u32(&mut image_bytes[HEADER_IMAGE_LENGTH], total_len as u32);
 
     // Next comes the boot field.
     let boot_field = BootField::new(BootImageType::SignedImage);
-    image_bytes[0x24..0x28].clone_from_slice(&boot_field.pack()?);
+    image_bytes[HEADER_IMAGE_TYPE].clone_from_slice(&boot_field.pack()?);
 
     // Then the location of the certificate table: right after the image.
-    LittleEndian::write_u32(&mut image_bytes[0x28..0x2c], (image_len + image_pad) as u32);
+    LittleEndian::write_u32(
+        &mut image_bytes[HEADER_OFFSET],
+        (image_len + image_pad) as u32,
+    );
 
     // Optionally write the image execution address.
     if execution_address > 0 {
-        LittleEndian::write_u32(&mut image_bytes[0x34..0x38], execution_address);
+        LittleEndian::write_u32(&mut image_bytes[HEADER_LOAD_ADDR], execution_address);
     }
 
     // Generate the image, see 7.3.4 of v2.4 UM 11126 for the layout.
@@ -348,9 +351,9 @@ pub fn generate_cfpa(
 }
 
 pub fn remove_image_signature(mut img: Vec<u8>) -> Result<Vec<u8>, Error> {
-    let total_len = LittleEndian::read_u32(&img[0x20..0x24]);
-    let boot_field = LittleEndian::read_u32(&img[0x24..0x28]);
-    let cert_table_offset = LittleEndian::read_u32(&img[0x28..0x2c]);
+    let total_len = LittleEndian::read_u32(&img[HEADER_IMAGE_LENGTH]);
+    let boot_field = LittleEndian::read_u32(&img[HEADER_IMAGE_TYPE]);
+    let cert_table_offset = LittleEndian::read_u32(&img[HEADER_OFFSET]);
 
     if boot_field != BootImageType::SignedImage as u32 {
         return Err(Error::NotSigned);
@@ -360,13 +363,16 @@ pub fn remove_image_signature(mut img: Vec<u8>) -> Result<Vec<u8>, Error> {
     }
 
     // Plain images have a length of 0
-    LittleEndian::write_u32(&mut img[0x20..0x24], 0);
+    LittleEndian::write_u32(&mut img[HEADER_IMAGE_LENGTH], 0);
 
     // Set imageType to a plain image
-    LittleEndian::write_u32(&mut img[0x24..0x28], BootImageType::PlainImage as u32);
+    LittleEndian::write_u32(
+        &mut img[HEADER_IMAGE_TYPE],
+        BootImageType::PlainImage as u32,
+    );
 
     // Clear the offset to the certificate header
-    LittleEndian::write_u32(&mut img[0x28..0x2c], 0);
+    LittleEndian::write_u32(&mut img[HEADER_OFFSET], 0);
 
     // Strip the certificate table
     img.resize(cert_table_offset as usize, 0u8);

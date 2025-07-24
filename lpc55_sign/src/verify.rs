@@ -8,7 +8,8 @@ use hex::ToHex as _;
 use log::{info, warn};
 use lpc55_areas::{
     BootField, BootImageType, CFPAPage, CMPAPage, CertHeader, ROTKeyStatus, RSA4KStatus,
-    SecBootStatus, TZMImageStatus, TzmImageType, TzmPreset,
+    SecBootStatus, TZMImageStatus, TzmImageType, TzmPreset, HEADER_IMAGE_LENGTH, HEADER_IMAGE_TYPE,
+    HEADER_LOAD_ADDR, HEADER_OFFSET,
 };
 use packed_struct::{EnumCatchAll, PackedStruct};
 use rsa::{
@@ -213,18 +214,16 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
 
 pub fn print_image(image: &[u8]) -> Result<(), Error> {
     info!("=== Image ====");
-    let image_len = u32::from_le_bytes(image[0x20..0x24].try_into().unwrap());
-    let image_type = BootField::unpack(image[0x24..0x28].try_into().unwrap())?;
-
-    let load_addr = u32::from_le_bytes(image[0x34..0x38].try_into().unwrap());
-
+    let image_len = u32::from_le_bytes(image[HEADER_IMAGE_LENGTH].try_into().unwrap());
+    let image_type = BootField::unpack(image[HEADER_IMAGE_TYPE].try_into().unwrap())?;
+    let load_addr = u32::from_le_bytes(image[HEADER_LOAD_ADDR].try_into().unwrap());
     info!("image length: {image_len:#x} ({image_len})");
     info!("image type: {image_type:#?}");
     info!("load address: {load_addr:#x}");
 
     match image_type.img_type {
         EnumCatchAll::Enum(BootImageType::SignedImage) => {
-            let header_offset = u32::from_le_bytes(image[0x28..0x2c].try_into().unwrap());
+            let header_offset = u32::from_le_bytes(image[HEADER_OFFSET].try_into().unwrap());
             let cert_header_size = std::mem::size_of::<CertHeader>();
             let cert_header = CertHeader::unpack(
                 image[header_offset as usize..][..cert_header_size]
@@ -287,7 +286,7 @@ pub fn print_image(image: &[u8]) -> Result<(), Error> {
             info!("RKHT sha: {}", s);
         }
         EnumCatchAll::Enum(BootImageType::CRCImage) => {
-            let crc = u32::from_le_bytes(image[0x28..0x2c].try_into().unwrap());
+            let crc = u32::from_le_bytes(image[HEADER_OFFSET].try_into().unwrap());
             info!("Expected CRC: {:x}", crc);
         }
         EnumCatchAll::Enum(BootImageType::PlainImage) => (),
@@ -542,10 +541,10 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
 
 fn check_crc_image(image: &[u8]) -> Result<(), Error> {
     let mut crc = crc_any::CRCu32::crc32mpeg2();
-    crc.digest(&image[..0x28]);
-    crc.digest(&image[0x2c..]);
+    crc.digest(&image[..HEADER_OFFSET.start]);
+    crc.digest(&image[HEADER_OFFSET.end..]);
     let expected = crc.get_crc();
-    let actual = u32::from_le_bytes(image[0x28..0x2c].try_into().unwrap());
+    let actual = u32::from_le_bytes(image[HEADER_OFFSET].try_into().unwrap());
     if expected != actual {
         return Err(Error::BadCrc);
     }
