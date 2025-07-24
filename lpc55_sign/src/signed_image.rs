@@ -9,9 +9,10 @@ use byteorder::{ByteOrder, LittleEndian};
 use der::Encode as _;
 use lpc55_areas::*;
 use packed_struct::prelude::*;
-use rsa::{traits::PublicKeyParts, RsaPrivateKey};
+use rsa::{pkcs1v15::Signature, traits::PublicKeyParts, RsaPrivateKey};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use sha2::{Digest as _, Sha256};
+use std::mem::size_of;
 use x509_cert::Certificate;
 
 /// Combined structure definine both CMPA/CFPA
@@ -378,4 +379,114 @@ pub fn remove_image_signature(mut img: Vec<u8>) -> Result<Vec<u8>, Error> {
     img.resize(cert_table_offset as usize, 0u8);
 
     Ok(img)
+}
+
+/// Computed from an LPC55 signed image: the certificate header, X.509
+/// certificates, and the root key table & its hash. See UM11126 §7.35.
+pub struct CertBlock {
+    /// Certificate header; see UM11126 Fig 18.
+    pub header: CertHeader,
+
+    /// X.509 certificates in root-to-signing-key order.
+    pub certs: Vec<Certificate>,
+
+    /// Root Key Table: SHA2-256 hashes of the four public
+    /// root keys that may be used to validate this image.
+    pub root_key_table: [[u8; 32]; 4],
+
+    /// Root Key Table Hash (RKTH): SHA2-256 hash of the root key table.
+    /// Uniquely identifies the set of keys that might validate this image;
+    /// may be matched against the RKTH field in a CMPA page.
+    pub root_key_table_hash: [u8; 32],
+}
+
+/// Given an LPC55 signed image, decode the certificate block and return
+/// it, a hash of the image contents (not including the signature), and the
+/// purported signature of that hash. Does *not* validate the signature or
+/// the certificates, only checks that they decode ok.
+pub fn image_certs_and_sig(image: &[u8]) -> Result<(CertBlock, Sha256, Signature), Error> {
+    // Check the image length.
+    let image_len = u32::from_le_bytes(image[HEADER_IMAGE_LENGTH].try_into()?);
+    if (image_len as usize) > image.len() {
+        return Err(Error::ImageLengthTooLong);
+    }
+
+    // Check the image type.
+    let boot_field = BootField::unpack(image[HEADER_IMAGE_TYPE].try_into().unwrap())?;
+    if !matches!(
+        boot_field.img_type,
+        EnumCatchAll::Enum(BootImageType::SignedImage)
+    ) {
+        return Err(Error::NotSigned);
+    }
+
+    // Find and read the certificate header.
+    let header_offset = u32::from_le_bytes(image[HEADER_OFFSET].try_into()?);
+    let header_size = size_of::<CertHeader>();
+    let header = CertHeader::unpack(image[header_offset as usize..][..header_size].try_into()?)?;
+    if header.signature != HEADER_SIGNATURE {
+        return Err(Error::MissingCertHeader);
+    }
+
+    // Check the total image length (not counting the signature).
+    let expected_len = header_offset + header.header_length + header.certificate_table_len + 32 * 4;
+    if header.total_image_len != expected_len {
+        return Err(Error::InvalidImageLen(expected_len, header.total_image_len));
+    }
+
+    // Collect certificates.
+    let mut offset = (header_offset + header.header_length) as usize;
+    let mut certs: Vec<Certificate> = Vec::new();
+    for _ in 0..header.certificate_count {
+        let length = u32::from_le_bytes(image[offset..offset + 4].try_into()?);
+        offset += 4;
+        let cert = cert::read_from_slice(&image[offset..offset + length as usize])?;
+        certs.push(cert);
+        offset += length as usize;
+    }
+
+    // Collect the root key table and compute its hash (RKTH).
+    let mut root_key_table = [[0u8; 32]; 4];
+    let mut rkth = Sha256::new();
+    for slot in root_key_table.iter_mut() {
+        let hash = &image[offset..offset + 32];
+        rkth.update(hash);
+        *slot = hash.try_into()?;
+        offset += 32;
+    }
+
+    // We now have the entire certificate block.
+    let cert_block = CertBlock {
+        header,
+        certs,
+        root_key_table,
+        root_key_table_hash: rkth.finalize().into(),
+    };
+
+    // Check that the signature follows the certificate block.
+    //
+    // TODO: It is possible to put the certificate block elsewhere in the
+    // image (after the vector table), in which case the signature would
+    // *not* immediately follow the RKTH. We have historically just assumed
+    // this is not the case, but in the future should handle it as well.
+    if offset != expected_len as usize {
+        return Err(Error::InvalidSignatureOffset(offset, expected_len));
+    }
+
+    // Compute a hash of the image up to, but not including, the signature.
+    // This may be used to verify the signature.
+    let digest = Sha256::new_with_prefix(&image[..offset]);
+
+    // Collect the RSA signature that immediately follows the certificate
+    // block and continues until the end of the image.
+    let signature = Signature::try_from(&image[offset..])?;
+
+    Ok((cert_block, digest, signature))
+}
+
+/// Compute and return the Root Key Table Hash (RKTH)
+/// from an LPC55 signed image.
+pub fn image_rkth(image: &[u8]) -> Result<[u8; 32], Error> {
+    let (cert_block, _digest, _signature) = image_certs_and_sig(image)?;
+    Ok(cert_block.root_key_table_hash)
 }

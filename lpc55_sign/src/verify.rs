@@ -2,19 +2,16 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::signed_image::image_certs_and_sig;
 use crate::{cert, Error};
 use der::Encode as _;
 use hex::ToHex as _;
 use log::{info, warn};
-use lpc55_areas::{
-    BootField, BootImageType, CFPAPage, CMPAPage, CertHeader, ROTKeyStatus, RSA4KStatus,
-    SecBootStatus, TZMImageStatus, TzmImageType, TzmPreset, HEADER_IMAGE_LENGTH, HEADER_IMAGE_TYPE,
-    HEADER_LOAD_ADDR, HEADER_OFFSET,
-};
+use lpc55_areas::*;
 use packed_struct::{EnumCatchAll, PackedStruct};
 use rsa::{
     pkcs1v15::{Signature, VerifyingKey},
-    signature::Verifier as _,
+    signature::DigestVerifier as _,
     traits::PublicKeyParts,
     RsaPublicKey,
 };
@@ -162,13 +159,7 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
         }
     }
 
-    let image_len = u32::from_le_bytes(image[0x20..0x24].try_into().unwrap());
-    if (image_len as usize) > image.len() {
-        return Err(Error::ImageLengthTooLong);
-    }
-
-    let image_type = BootField::unpack(image[0x24..0x28].try_into().unwrap())?;
-
+    let image_type = BootField::unpack(image[HEADER_IMAGE_TYPE].try_into().unwrap())?;
     match secure_boot_cfg.tzm_image_type {
         TZMImageStatus::PresetTZM => {
             if image_type.tzm_preset == TzmPreset::NotPresent {
@@ -214,42 +205,25 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
 
 pub fn print_image(image: &[u8]) -> Result<(), Error> {
     info!("=== Image ====");
-    let image_len = u32::from_le_bytes(image[HEADER_IMAGE_LENGTH].try_into().unwrap());
-    let image_type = BootField::unpack(image[HEADER_IMAGE_TYPE].try_into().unwrap())?;
-    let load_addr = u32::from_le_bytes(image[HEADER_LOAD_ADDR].try_into().unwrap());
+    let image_len = u32::from_le_bytes(image[HEADER_IMAGE_LENGTH].try_into()?);
+    let image_type = BootField::unpack(image[HEADER_IMAGE_TYPE].try_into()?)?;
+    let load_addr = u32::from_le_bytes(image[HEADER_LOAD_ADDR].try_into()?);
     info!("image length: {image_len:#x} ({image_len})");
     info!("image type: {image_type:#?}");
     info!("load address: {load_addr:#x}");
 
     match image_type.img_type {
         EnumCatchAll::Enum(BootImageType::SignedImage) => {
-            let header_offset = u32::from_le_bytes(image[HEADER_OFFSET].try_into().unwrap());
-            let cert_header_size = std::mem::size_of::<CertHeader>();
-            let cert_header = CertHeader::unpack(
-                image[header_offset as usize..][..cert_header_size]
-                    .try_into()
-                    .unwrap(),
-            )?;
-            info!("header offset: {header_offset:#x} ({header_offset})");
-            info!("cert header: {cert_header:#x?}");
-            info!("data.len(): {:#x}", image.len());
+            let (cert_block, _digest, _signature) = image_certs_and_sig(image)?;
+            info!("cert header: {:#x?}", cert_block.header);
+            info!("image length: {:#x}", image.len());
 
-            // If the cert header is bad the rest of the data is likely bad too
-            // so just bail
-            if cert_header.signature != *b"cert" {
-                return Err(Error::MissingCertHeader);
-            }
-
-            let mut start = (header_offset + cert_header.header_length) as usize;
-            let mut certs: Vec<Certificate> = vec![];
-
-            for i in 0..cert_header.certificate_count {
-                let x509_length = u32::from_le_bytes(image[start..start + 4].try_into().unwrap());
-                info!("Certificate [{}/{}]", i + 1, cert_header.certificate_count);
-                info!("    certificate length: {x509_length}");
-                start += 4;
-                let cert = &image[start..start + x509_length as usize];
-                let cert = cert::read_from_slice(cert)?;
+            for (i, cert) in cert_block.certs.iter().enumerate() {
+                info!(
+                    "Certificate [{}/{}]",
+                    i + 1,
+                    cert_block.header.certificate_count
+                );
                 let subject = &cert.tbs_certificate.subject;
                 let issuer = &cert.tbs_certificate.issuer;
                 info!(
@@ -262,35 +236,26 @@ pub fn print_image(image: &[u8]) -> Result<(), Error> {
                 );
                 info!(
                     "    Algorithm:\n   {}",
-                    cert::signature_algorithm_name(&cert)
+                    cert::signature_algorithm_name(cert)
                 );
                 info!("    Serial:\n      {}", cert.tbs_certificate.serial_number);
-                certs.push(cert);
-                start += x509_length as usize;
             }
 
-            let mut rkh_table = vec![];
-            let mut rkh_sha = sha2::Sha256::new();
-            for i in 0..4 {
-                let rot_hash = &image[start..start + 32];
+            for (i, rot_hash) in cert_block.root_key_table.iter().enumerate() {
                 info!("Root key hash {i}: ");
                 info!("  {}", rot_hash.encode_hex::<String>());
-                rkh_sha.update(rot_hash);
-                rkh_table.push(rot_hash.to_owned());
-                start += 32;
             }
-            let mut s = String::new();
-            for b in rkh_sha.finalize() {
-                write!(s, "{:02x}", b)?;
-            }
-            info!("RKHT sha: {}", s);
+            info!(
+                "RKTH: {}",
+                cert_block.root_key_table_hash.encode_hex::<String>()
+            );
         }
         EnumCatchAll::Enum(BootImageType::CRCImage) => {
-            let crc = u32::from_le_bytes(image[HEADER_OFFSET].try_into().unwrap());
+            let crc = u32::from_le_bytes(image[HEADER_OFFSET].try_into()?);
             info!("Expected CRC: {:x}", crc);
         }
         EnumCatchAll::Enum(BootImageType::PlainImage) => (),
-        e => panic!("do not know how to check {e:?}"),
+        e => panic!("do not know how to print {e:?}"),
     }
 
     Ok(())
@@ -406,37 +371,13 @@ pub fn print_cfpa(cfpa: CFPAPage) -> Result<(), Error> {
 }
 
 fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), Error> {
-    let header_offset = u32::from_le_bytes(image[0x28..0x2c].try_into().unwrap());
+    let (cert_block, digest, signature) = image_certs_and_sig(image)?;
 
-    let cert_header_size = std::mem::size_of::<CertHeader>();
-    let cert_header = CertHeader::unpack(
-        image[header_offset as usize..][..cert_header_size]
-            .try_into()
-            .unwrap(),
-    )?;
-    if cert_header.signature != *b"cert" {
-        return Err(Error::MissingCertHeader);
-    }
-
-    let expected_len =
-        header_offset + cert_header.header_length + cert_header.certificate_table_len + 32 * 4;
-    if cert_header.total_image_len != expected_len {
-        return Err(Error::InvalidImageLen(
-            expected_len,
-            cert_header.total_image_len,
-        ));
-    }
-
-    let mut start = (header_offset + cert_header.header_length) as usize;
-    let mut certs: Vec<Certificate> = vec![];
-    for _ in 0..cert_header.certificate_count {
-        let x509_length = u32::from_le_bytes(image[start..start + 4].try_into().unwrap());
-        start += 4;
-        let cert = &image[start..start + x509_length as usize];
-        let cert = cert::read_from_slice(cert)?;
-
+    let mut prev_public_key = None;
+    for cert in cert_block.certs.iter() {
         let cmpa_rsa4k = cmpa.get_secure_boot_cfg()?.rsa4k;
-        let public_key_bits = cert::public_key(&cert).unwrap().size() * 8;
+        let public_key = cert::public_key(cert)?;
+        let public_key_bits = public_key.size() * 8;
         if !matches!(
             (cmpa_rsa4k, public_key_bits),
             (RSA4KStatus::RSA2048Keys, 2048)
@@ -450,47 +391,41 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
             ));
         }
 
-        if !cert::uses_supported_signature_algorithm(&cert) {
+        if !cert::uses_supported_signature_algorithm(cert) {
             return Err(Error::UnsupportedAlgorithm(cert::signature_algorithm_name(
-                &cert,
+                cert,
             )));
         }
 
-        let prev_public_key = certs.last().map(|prev| cert::public_key(prev).unwrap());
         // If this is the root certificate, then `prev_public_key` is `None` and
         // `verify_cert_signature` checks that it is correctly self-signed.
-        verify_cert_signature(&cert, prev_public_key)?;
+        verify_cert_signature(cert, prev_public_key)?;
 
-        certs.push(cert);
-        start += x509_length as usize;
+        prev_public_key = Some(public_key)
     }
 
-    let mut rkh_table = vec![];
-    let mut rkh_sha = sha2::Sha256::new();
-    for _ in 0..4 {
-        let rot_hash = &image[start..start + 32];
-        rkh_sha.update(rot_hash);
-        rkh_table.push(rot_hash.to_owned());
-        start += 32;
-    }
-
-    if rkh_sha.finalize().as_slice() != cmpa.rotkh {
-        return Err(Error::RotkhMismatch);
-    }
+    let Some(first_cert) = cert_block.certs.first() else {
+        return Err(Error::NoSigningCertificate)
+    };
 
     let mut sha = sha2::Sha256::new();
-    let public_key_rsa = cert::public_key(&certs[0])?;
+    let public_key_rsa = cert::public_key(first_cert)?;
     sha.update(public_key_rsa.n().to_bytes_be());
     sha.update(public_key_rsa.e().to_bytes_be());
     let out = sha.finalize().to_vec();
-    if let Some((index, _)) = rkh_table.iter().enumerate().find(|(_, k)| *k == &out) {
+    if let Some((index, _)) = cert_block
+        .root_key_table
+        .iter()
+        .enumerate()
+        .find(|(_, k)| **k == *out)
+    {
         let rkth_revoke = cfpa.get_rkth_revoke()?;
         let rotk_status = match index {
             0 => rkth_revoke.rotk0,
             1 => rkth_revoke.rotk1,
             2 => rkth_revoke.rotk2,
             3 => rkth_revoke.rotk3,
-            _ => unreachable!("rkh_table must be exactly 4 elements"),
+            _ => unreachable!("root key table must be exactly 4 elements"),
         };
         match rotk_status {
             ROTKeyStatus::Invalid => {
@@ -505,8 +440,9 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
         return Err(Error::PubkeyNotInTable);
     }
 
-    let last_cert = &certs.last().unwrap();
-
+    let Some(last_cert) = cert_block.certs.last() else {
+        return Err(Error::NoSigningCertificate)
+    };
     let last_cert_sn = last_cert.tbs_certificate.serial_number.as_bytes();
     let last_cert_sn_magic = &last_cert_sn[0..2];
     if last_cert_sn_magic != [0x3c, 0xc3] {
@@ -515,7 +451,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
         ));
     }
 
-    let last_cert_sn_revoke_id = u16::from_le_bytes(last_cert_sn[2..4].try_into().unwrap());
+    let last_cert_sn_revoke_id = u16::from_le_bytes(last_cert_sn[2..4].try_into()?);
     if !crate::is_unary(last_cert_sn_revoke_id) {
         warn!("Last certificate's revocation ID (0x{last_cert_sn_revoke_id:04x}) should be a unary counter but isn't")
     }
@@ -533,9 +469,8 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
         }
     }
 
-    let public_key_rsa = cert::public_key(certs.last().unwrap())?;
-    let signature = &Signature::try_from(&image[start..]).unwrap();
-    verify_signature(public_key_rsa, &image[..start], signature)?;
+    let signing_key = cert::public_key(last_cert)?;
+    verify_signature(signing_key, digest, &signature)?;
     Ok(())
 }
 
@@ -544,7 +479,7 @@ fn check_crc_image(image: &[u8]) -> Result<(), Error> {
     crc.digest(&image[..HEADER_OFFSET.start]);
     crc.digest(&image[HEADER_OFFSET.end..]);
     let expected = crc.get_crc();
-    let actual = u32::from_le_bytes(image[HEADER_OFFSET].try_into().unwrap());
+    let actual = u32::from_le_bytes(image[HEADER_OFFSET].try_into()?);
     if expected != actual {
         return Err(Error::BadCrc);
     }
@@ -560,17 +495,22 @@ fn verify_cert_signature(
     cert: &Certificate,
     public_key: Option<RsaPublicKey>,
 ) -> Result<(), Error> {
+    let signature = Signature::try_from(cert.signature.raw_bytes())?;
+    let public_key = if let Some(public_key) = public_key {
+        public_key
+    } else {
+        cert::public_key(cert)?
+    };
     let tbs = cert.tbs_certificate.to_der()?;
-    let public_key = public_key.unwrap_or_else(|| cert::public_key(cert).unwrap());
-    let signature = Signature::try_from(cert.signature.raw_bytes()).unwrap();
-    verify_signature(public_key, &tbs, &signature)
+    let digest = Sha256::new_with_prefix(tbs);
+    verify_signature(public_key, digest, &signature)
 }
 
 fn verify_signature(
     public_key: RsaPublicKey,
-    message: &[u8],
+    digest: Sha256,
     signature: &Signature,
 ) -> Result<(), Error> {
     let verifying_key = VerifyingKey::<Sha256>::new(public_key);
-    Ok(verifying_key.verify(message, signature)?)
+    Ok(verifying_key.verify_digest(digest, signature)?)
 }
