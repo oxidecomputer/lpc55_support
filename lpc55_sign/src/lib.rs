@@ -201,7 +201,4 @@ pub enum Error {
 
     #[error("fmt error: {0}")]
     FmtError(#[from] std::fmt::Error),
-
-    #[error(transparent)]
-    TryFromSliceError(#[from] std::array::TryFromSliceError),
 }

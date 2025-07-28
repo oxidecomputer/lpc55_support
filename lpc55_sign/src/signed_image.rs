@@ -415,15 +415,19 @@ pub fn image_certs_and_sig(image: &[u8]) -> Result<(CertBlock, Sha256, Signature
     }
 
     // Check the total image length including the signature.
-    let image_len = u32::from_le_bytes(image[HEADER_IMAGE_LENGTH].try_into()?);
+    let image_len = u32::from_le_bytes(image[HEADER_IMAGE_LENGTH].try_into().unwrap());
     if (image_len as usize) != image.len() {
         return Err(Error::InvalidImageLen(image.len(), image_len));
     }
 
     // Find and read the certificate header.
-    let header_offset = u32::from_le_bytes(image[HEADER_OFFSET].try_into()?);
+    let header_offset = u32::from_le_bytes(image[HEADER_OFFSET].try_into().unwrap());
     let header_size = size_of::<CertHeader>();
-    let header = CertHeader::unpack(image[header_offset as usize..][..header_size].try_into()?)?;
+    let header = CertHeader::unpack(
+        image[header_offset as usize..][..header_size]
+            .try_into()
+            .unwrap(),
+    )?;
     if header.signature != HEADER_SIGNATURE {
         return Err(Error::MissingCertHeader);
     }
@@ -431,14 +435,17 @@ pub fn image_certs_and_sig(image: &[u8]) -> Result<(CertBlock, Sha256, Signature
     // Check the certificate block length.
     let expected_len = header_offset + header.header_length + header.certificate_table_len + 32 * 4;
     if header.total_image_len != expected_len {
-        return Err(Error::InvalidCertBlockLen(expected_len, header.total_image_len));
+        return Err(Error::InvalidCertBlockLen(
+            expected_len,
+            header.total_image_len,
+        ));
     }
 
     // Collect certificates.
     let mut offset = (header_offset + header.header_length) as usize;
     let mut certs: Vec<Certificate> = Vec::new();
     for _ in 0..header.certificate_count {
-        let length = u32::from_le_bytes(image[offset..][..4].try_into()?);
+        let length = u32::from_le_bytes(image[offset..][..4].try_into().unwrap());
         offset += 4;
         let cert = cert::read_from_slice(&image[offset..][..length as usize])?;
         certs.push(cert);
@@ -451,7 +458,7 @@ pub fn image_certs_and_sig(image: &[u8]) -> Result<(CertBlock, Sha256, Signature
     for slot in root_key_table.iter_mut() {
         let hash = &image[offset..][..32];
         rkth.update(hash);
-        *slot = hash.try_into()?;
+        *slot = hash.try_into().unwrap();
         offset += 32;
     }
 

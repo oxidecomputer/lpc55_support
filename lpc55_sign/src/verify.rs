@@ -205,9 +205,9 @@ pub fn verify_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), 
 
 pub fn print_image(image: &[u8]) -> Result<(), Error> {
     info!("=== Image ====");
-    let image_len = u32::from_le_bytes(image[HEADER_IMAGE_LENGTH].try_into()?);
-    let image_type = BootField::unpack(image[HEADER_IMAGE_TYPE].try_into()?)?;
-    let load_addr = u32::from_le_bytes(image[HEADER_LOAD_ADDR].try_into()?);
+    let image_len = u32::from_le_bytes(image[HEADER_IMAGE_LENGTH].try_into().unwrap());
+    let image_type = BootField::unpack(image[HEADER_IMAGE_TYPE].try_into().unwrap())?;
+    let load_addr = u32::from_le_bytes(image[HEADER_LOAD_ADDR].try_into().unwrap());
     info!("image length: {image_len:#x} ({image_len})");
     info!("image type: {image_type:#?}");
     info!("load address: {load_addr:#x}");
@@ -251,7 +251,7 @@ pub fn print_image(image: &[u8]) -> Result<(), Error> {
             );
         }
         EnumCatchAll::Enum(BootImageType::CRCImage) => {
-            let crc = u32::from_le_bytes(image[HEADER_OFFSET].try_into()?);
+            let crc = u32::from_le_bytes(image[HEADER_OFFSET].try_into().unwrap());
             info!("Expected CRC: {:x}", crc);
         }
         EnumCatchAll::Enum(BootImageType::PlainImage) => (),
@@ -451,7 +451,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
         ));
     }
 
-    let last_cert_sn_revoke_id = u16::from_le_bytes(last_cert_sn[2..4].try_into()?);
+    let last_cert_sn_revoke_id = u16::from_le_bytes(last_cert_sn[2..4].try_into().unwrap());
     if !crate::is_unary(last_cert_sn_revoke_id) {
         warn!("Last certificate's revocation ID (0x{last_cert_sn_revoke_id:04x}) should be a unary counter but isn't")
     }
@@ -479,7 +479,7 @@ fn check_crc_image(image: &[u8]) -> Result<(), Error> {
     crc.digest(&image[..HEADER_OFFSET.start]);
     crc.digest(&image[HEADER_OFFSET.end..]);
     let expected = crc.get_crc();
-    let actual = u32::from_le_bytes(image[HEADER_OFFSET].try_into()?);
+    let actual = u32::from_le_bytes(image[HEADER_OFFSET].try_into().unwrap());
     if expected != actual {
         return Err(Error::BadCrc);
     }
