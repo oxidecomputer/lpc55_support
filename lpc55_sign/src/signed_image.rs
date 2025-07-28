@@ -438,9 +438,9 @@ pub fn image_certs_and_sig(image: &[u8]) -> Result<(CertBlock, Sha256, Signature
     let mut offset = (header_offset + header.header_length) as usize;
     let mut certs: Vec<Certificate> = Vec::new();
     for _ in 0..header.certificate_count {
-        let length = u32::from_le_bytes(image[offset..offset + 4].try_into()?);
+        let length = u32::from_le_bytes(image[offset..][..4].try_into()?);
         offset += 4;
-        let cert = cert::read_from_slice(&image[offset..offset + length as usize])?;
+        let cert = cert::read_from_slice(&image[offset..][..length as usize])?;
         certs.push(cert);
         offset += length as usize;
     }
@@ -449,7 +449,7 @@ pub fn image_certs_and_sig(image: &[u8]) -> Result<(CertBlock, Sha256, Signature
     let mut root_key_table = [[0u8; 32]; 4];
     let mut rkth = Sha256::new();
     for slot in root_key_table.iter_mut() {
-        let hash = &image[offset..offset + 32];
+        let hash = &image[offset..][..32];
         rkth.update(hash);
         *slot = hash.try_into()?;
         offset += 32;
