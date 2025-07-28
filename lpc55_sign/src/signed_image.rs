@@ -405,12 +405,6 @@ pub struct CertBlock {
 /// purported signature of that hash. Does *not* validate the signature or
 /// the certificates, only checks that they decode ok.
 pub fn image_certs_and_sig(image: &[u8]) -> Result<(CertBlock, Sha256, Signature), Error> {
-    // Check the image length.
-    let image_len = u32::from_le_bytes(image[HEADER_IMAGE_LENGTH].try_into()?);
-    if (image_len as usize) > image.len() {
-        return Err(Error::ImageLengthTooLong);
-    }
-
     // Check the image type.
     let boot_field = BootField::unpack(image[HEADER_IMAGE_TYPE].try_into().unwrap())?;
     if !matches!(
@@ -418,6 +412,12 @@ pub fn image_certs_and_sig(image: &[u8]) -> Result<(CertBlock, Sha256, Signature
         EnumCatchAll::Enum(BootImageType::SignedImage)
     ) {
         return Err(Error::NotSigned);
+    }
+
+    // Check the total image length including the signature.
+    let image_len = u32::from_le_bytes(image[HEADER_IMAGE_LENGTH].try_into()?);
+    if (image_len as usize) != image.len() {
+        return Err(Error::InvalidImageLen(image.len(), image_len));
     }
 
     // Find and read the certificate header.
@@ -428,10 +428,10 @@ pub fn image_certs_and_sig(image: &[u8]) -> Result<(CertBlock, Sha256, Signature
         return Err(Error::MissingCertHeader);
     }
 
-    // Check the total image length (not counting the signature).
+    // Check the certificate block length.
     let expected_len = header_offset + header.header_length + header.certificate_table_len + 32 * 4;
     if header.total_image_len != expected_len {
-        return Err(Error::InvalidImageLen(expected_len, header.total_image_len));
+        return Err(Error::InvalidCertBlockLen(expected_len, header.total_image_len));
     }
 
     // Collect certificates.

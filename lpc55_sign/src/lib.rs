@@ -151,7 +151,10 @@ pub enum Error {
     MissingCertHeader,
 
     #[error("Invalid image length in cert header: expected {0}, got {1}")]
-    InvalidImageLen(u32, u32),
+    InvalidCertBlockLen(u32, u32),
+
+    #[error("Invalid total image length: expected {0}, got {1}")]
+    InvalidImageLen(usize, u32),
 
     #[error("Certificate public key size ({0} bits) does not match CMPA config ({1})")]
     InvalidPubkeySize(usize, usize),
