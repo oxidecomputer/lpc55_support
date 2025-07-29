@@ -383,7 +383,7 @@ pub fn remove_image_signature(mut img: Vec<u8>) -> Result<Vec<u8>, Error> {
 
 /// Computed from an LPC55 signed image: the certificate header, X.509
 /// certificates, and the root key table & its hash. See UM11126 §7.35.
-pub struct CertBlock {
+pub(crate) struct CertBlock {
     /// Certificate header; see UM11126 Fig 18.
     pub header: CertHeader,
 
@@ -404,7 +404,7 @@ pub struct CertBlock {
 /// it, a hash of the image contents (not including the signature), and the
 /// purported signature of that hash. Does *not* validate the signature or
 /// the certificates, only checks that they decode ok.
-pub fn image_certs_and_sig(image: &[u8]) -> Result<(CertBlock, Sha256, Signature), Error> {
+pub(crate) fn image_certs_and_sig(image: &[u8]) -> Result<(CertBlock, Sha256, Signature), Error> {
     // Check the image type.
     let boot_field = BootField::unpack(image[HEADER_IMAGE_TYPE].try_into().unwrap())?;
     if !matches!(
@@ -489,11 +489,4 @@ pub fn image_certs_and_sig(image: &[u8]) -> Result<(CertBlock, Sha256, Signature
     let signature = Signature::try_from(&image[offset..])?;
 
     Ok((cert_block, digest, signature))
-}
-
-/// Compute and return the Root Key Table Hash (RKTH)
-/// from an LPC55 signed image.
-pub fn image_rkth(image: &[u8]) -> Result<[u8; 32], Error> {
-    let (cert_block, _digest, _signature) = image_certs_and_sig(image)?;
-    Ok(cert_block.root_key_table_hash)
 }
