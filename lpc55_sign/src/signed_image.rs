@@ -9,9 +9,10 @@ use byteorder::{ByteOrder, LittleEndian};
 use der::Encode as _;
 use lpc55_areas::*;
 use packed_struct::prelude::*;
-use rsa::{traits::PublicKeyParts, RsaPrivateKey};
+use rsa::{pkcs1v15::Signature, traits::PublicKeyParts, RsaPrivateKey};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use sha2::{Digest as _, Sha256};
+use std::mem::size_of;
 use x509_cert::Certificate;
 
 /// Combined structure definine both CMPA/CFPA
@@ -192,18 +193,21 @@ pub fn stamp_image(
     let total_len = signed_len + sig_len;
 
     // Start writing the image header: first the total image length.
-    LittleEndian::write_u32(&mut image_bytes[0x20..0x24], total_len as u32);
+    LittleEndian::write_u32(&mut image_bytes[HEADER_IMAGE_LENGTH], total_len as u32);
 
     // Next comes the boot field.
     let boot_field = BootField::new(BootImageType::SignedImage);
-    image_bytes[0x24..0x28].clone_from_slice(&boot_field.pack()?);
+    image_bytes[HEADER_IMAGE_TYPE].clone_from_slice(&boot_field.pack()?);
 
     // Then the location of the certificate table: right after the image.
-    LittleEndian::write_u32(&mut image_bytes[0x28..0x2c], (image_len + image_pad) as u32);
+    LittleEndian::write_u32(
+        &mut image_bytes[HEADER_OFFSET],
+        (image_len + image_pad) as u32,
+    );
 
     // Optionally write the image execution address.
     if execution_address > 0 {
-        LittleEndian::write_u32(&mut image_bytes[0x34..0x38], execution_address);
+        LittleEndian::write_u32(&mut image_bytes[HEADER_LOAD_ADDR], execution_address);
     }
 
     // Generate the image, see 7.3.4 of v2.4 UM 11126 for the layout.
@@ -348,9 +352,9 @@ pub fn generate_cfpa(
 }
 
 pub fn remove_image_signature(mut img: Vec<u8>) -> Result<Vec<u8>, Error> {
-    let total_len = LittleEndian::read_u32(&img[0x20..0x24]);
-    let boot_field = LittleEndian::read_u32(&img[0x24..0x28]);
-    let cert_table_offset = LittleEndian::read_u32(&img[0x28..0x2c]);
+    let total_len = LittleEndian::read_u32(&img[HEADER_IMAGE_LENGTH]);
+    let boot_field = LittleEndian::read_u32(&img[HEADER_IMAGE_TYPE]);
+    let cert_table_offset = LittleEndian::read_u32(&img[HEADER_OFFSET]);
 
     if boot_field != BootImageType::SignedImage as u32 {
         return Err(Error::NotSigned);
@@ -360,16 +364,129 @@ pub fn remove_image_signature(mut img: Vec<u8>) -> Result<Vec<u8>, Error> {
     }
 
     // Plain images have a length of 0
-    LittleEndian::write_u32(&mut img[0x20..0x24], 0);
+    LittleEndian::write_u32(&mut img[HEADER_IMAGE_LENGTH], 0);
 
     // Set imageType to a plain image
-    LittleEndian::write_u32(&mut img[0x24..0x28], BootImageType::PlainImage as u32);
+    LittleEndian::write_u32(
+        &mut img[HEADER_IMAGE_TYPE],
+        BootImageType::PlainImage as u32,
+    );
 
     // Clear the offset to the certificate header
-    LittleEndian::write_u32(&mut img[0x28..0x2c], 0);
+    LittleEndian::write_u32(&mut img[HEADER_OFFSET], 0);
 
     // Strip the certificate table
     img.resize(cert_table_offset as usize, 0u8);
 
     Ok(img)
+}
+
+/// Computed from an LPC55 signed image: the certificate header, X.509
+/// certificates, and the root key table & its hash. See UM11126 §7.35.
+pub(crate) struct CertBlock {
+    /// Certificate header; see UM11126 Fig 18.
+    pub header: CertHeader,
+
+    /// X.509 certificates in root-to-signing-key order.
+    pub certs: Vec<Certificate>,
+
+    /// Root Key Table: SHA2-256 hashes of the four public
+    /// root keys that may be used to validate this image.
+    pub root_key_table: [[u8; 32]; 4],
+
+    /// Root Key Table Hash (RKTH): SHA2-256 hash of the root key table.
+    /// Uniquely identifies the set of keys that might validate this image;
+    /// may be matched against the RKTH field in a CMPA page.
+    pub root_key_table_hash: [u8; 32],
+}
+
+/// Given an LPC55 signed image, decode the certificate block and return
+/// it, a hash of the image contents (not including the signature), and the
+/// purported signature of that hash. Does *not* validate the signature or
+/// the certificates, only checks that they decode ok.
+pub(crate) fn image_certs_and_sig(image: &[u8]) -> Result<(CertBlock, Sha256, Signature), Error> {
+    // Check the image type.
+    let boot_field = BootField::unpack(image[HEADER_IMAGE_TYPE].try_into().unwrap())?;
+    if !matches!(
+        boot_field.img_type,
+        EnumCatchAll::Enum(BootImageType::SignedImage)
+    ) {
+        return Err(Error::NotSigned);
+    }
+
+    // Check the total image length including the signature.
+    let image_len = u32::from_le_bytes(image[HEADER_IMAGE_LENGTH].try_into().unwrap());
+    if (image_len as usize) != image.len() {
+        return Err(Error::InvalidImageLen(image.len(), image_len));
+    }
+
+    // Find and read the certificate header.
+    let header_offset = u32::from_le_bytes(image[HEADER_OFFSET].try_into().unwrap());
+    let header_size = size_of::<CertHeader>();
+    let header = CertHeader::unpack(
+        image[header_offset as usize..][..header_size]
+            .try_into()
+            .unwrap(),
+    )?;
+    if header.signature != HEADER_SIGNATURE {
+        return Err(Error::MissingCertHeader);
+    }
+
+    // Check the certificate block length.
+    let expected_len = header_offset + header.header_length + header.certificate_table_len + 32 * 4;
+    if header.total_image_len != expected_len {
+        return Err(Error::InvalidCertBlockLen(
+            expected_len,
+            header.total_image_len,
+        ));
+    }
+
+    // Collect certificates.
+    let mut offset = (header_offset + header.header_length) as usize;
+    let mut certs: Vec<Certificate> = Vec::new();
+    for _ in 0..header.certificate_count {
+        let length = u32::from_le_bytes(image[offset..][..4].try_into().unwrap());
+        offset += 4;
+        let cert = cert::read_from_slice(&image[offset..][..length as usize])?;
+        certs.push(cert);
+        offset += length as usize;
+    }
+
+    // Collect the root key table and compute its hash (RKTH).
+    let mut root_key_table = [[0u8; 32]; 4];
+    let mut rkth = Sha256::new();
+    for slot in root_key_table.iter_mut() {
+        let hash = &image[offset..][..32];
+        rkth.update(hash);
+        *slot = hash.try_into().unwrap();
+        offset += 32;
+    }
+
+    // We now have the entire certificate block.
+    let cert_block = CertBlock {
+        header,
+        certs,
+        root_key_table,
+        root_key_table_hash: rkth.finalize().into(),
+    };
+
+    // Check that the signature follows the certificate block.
+    //
+    // TODO: It is possible to put the certificate block elsewhere in the
+    // image (after the vector table), in which case the signature would
+    // *not* immediately follow the RKTH. We have historically just assumed
+    // this is not the case, but in the future should handle it as well.
+    if offset != expected_len as usize {
+        return Err(Error::InvalidSignatureOffset(offset, expected_len));
+    }
+
+    // Compute a hash of the image up to, but not including, the signature.
+    // This may be used to verify the signature.
+    let digest = Sha256::new_with_prefix(&image[..offset]);
+
+    // Collect the RSA signature that immediately follows the certificate
+    // block and continues until the end of the image.
+    let signature = Signature::try_from(&image[offset..])?;
+
+    Ok((cert_block, digest, signature))
 }
