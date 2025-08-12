@@ -1,4 +1,3 @@
-use byteorder::LittleEndian;
 use lpc55_areas::DebugSettings;
 use num_traits::ToPrimitive;
 use rsa::{traits::PublicKeyParts, RsaPrivateKey, RsaPublicKey};
@@ -6,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_hex::{SerHex, StrictPfx};
 use sha2::{Digest, Sha256};
 use x509_cert::Certificate;
-use zerocopy::{FromBytes, U16, U32};
+use zerocopy::{byteorder::LittleEndian, FromBytes, U16, U32};
 
 use crate::{
     cert::public_key,
