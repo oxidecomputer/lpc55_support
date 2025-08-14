@@ -11,6 +11,8 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
+    permissions:
+      contents: read
 
     steps:
       # check out our code
