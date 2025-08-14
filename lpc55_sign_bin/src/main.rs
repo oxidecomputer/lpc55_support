@@ -614,8 +614,8 @@ fn main() -> Result<()> {
             let debug_auth_challenge =
                 std::fs::read(debug_auth_challenge).context("Loading debug auth challenge")?;
             let debug_auth_challenge =
-                DebugAuthChallenge::read_from(debug_auth_challenge.as_slice())
-                    .ok_or(anyhow!("Parsing Debug Auth Challenge failed"))?;
+                DebugAuthChallenge::read_from_bytes(debug_auth_challenge.as_slice())
+                    .map_err(|e| anyhow!("Parsing Debug Auth Challenge failed: {}", e))?;
             info!("Debug Auth Challenge: {debug_auth_challenge:#?}");
 
             let debug_auth_response =

@@ -5,6 +5,7 @@
 use crate::signed_image::image_certs_and_sig;
 use crate::{cert, Error};
 use der::Encode as _;
+use env_logger::fmt::style;
 use hex::ToHex as _;
 use log::{info, warn};
 use lpc55_areas::*;
@@ -25,26 +26,27 @@ pub fn init_verify_logger(verbose: bool) {
     let mut builder = env_logger::Builder::from_default_env();
     builder
         .format(|buf, record| {
-            let mut level_style = buf.style();
-
-            level_style.set_color(match record.level() {
-                log::Level::Info => env_logger::fmt::Color::Cyan,
-                log::Level::Trace => env_logger::fmt::Color::Blue,
-                log::Level::Warn => env_logger::fmt::Color::Yellow,
-                log::Level::Error => env_logger::fmt::Color::Red,
-                log::Level::Debug => env_logger::fmt::Color::Green,
-            });
+            let color = match record.level() {
+                log::Level::Info => style::Color::Ansi(style::AnsiColor::Cyan),
+                log::Level::Trace => style::Color::Ansi(style::AnsiColor::Blue),
+                log::Level::Warn => style::Color::Ansi(style::AnsiColor::Yellow),
+                log::Level::Error => style::Color::Ansi(style::AnsiColor::Red),
+                log::Level::Debug => style::Color::Ansi(style::AnsiColor::Green),
+            };
+            let style = style::Style::new().fg_color(Some(color));
+            let level_render = match record.level() {
+                log::Level::Info => "",
+                log::Level::Trace => "",
+                log::Level::Warn => "WARN",
+                log::Level::Error => "ERROR",
+                log::Level::Debug => "OKAY",
+            };
 
             writeln!(
                 buf,
-                "{: <5} | {}",
-                level_style.value(match record.level() {
-                    log::Level::Info => "",
-                    log::Level::Trace => "",
-                    log::Level::Warn => "WARN",
-                    log::Level::Error => "ERROR",
-                    log::Level::Debug => "OKAY",
-                }),
+                "{}{level_render: <5}{}: {}",
+                style.render(),
+                style::Style::new().render_reset(),
                 record.args().to_string().replace('\n', "\n      | ")
             )
         })
@@ -405,7 +407,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
     }
 
     let Some(first_cert) = cert_block.certs.first() else {
-        return Err(Error::NoSigningCertificate)
+        return Err(Error::NoSigningCertificate);
     };
 
     let mut sha = sha2::Sha256::new();
@@ -441,7 +443,7 @@ fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<()
     }
 
     let Some(last_cert) = cert_block.certs.last() else {
-        return Err(Error::NoSigningCertificate)
+        return Err(Error::NoSigningCertificate);
     };
     let last_cert_sn = last_cert.tbs_certificate.serial_number.as_bytes();
     let last_cert_sn_magic = &last_cert_sn[0..2];
