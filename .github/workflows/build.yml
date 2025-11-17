@@ -77,7 +77,7 @@ jobs:
       - name: Cargo build
         run: |
           set -euo pipefail
-          cargo -Znext-lockfile-bump build --release --bins
+          cargo build --release --bins
       - name: Package binaries
         id: package
         if: github.event_name == 'push'
