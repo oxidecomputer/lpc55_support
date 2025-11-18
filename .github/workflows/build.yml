@@ -21,18 +21,21 @@ jobs:
             target: x86_64-unknown-linux-gnu
             archive_os: ubuntu
             archive_arch: x86_64
+            deb_arch: amd64
             exe_suffix: ""
           - display: ubuntu-arm64
             runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             archive_os: ubuntu
             archive_arch: arm64
+            deb_arch: arm64
             exe_suffix: ""
           - display: windows-x86_64
             runner: windows-latest
             target: x86_64-pc-windows-msvc
             archive_os: windows
             archive_arch: x86_64
+            deb_arch: ~
             exe_suffix: ".exe"
     env:
       CARGO_TERM_COLOR: always
@@ -97,12 +100,44 @@ jobs:
           tar -czf "${archive}.tar.gz" -C dist "${archive}"
           echo "archive_name=${archive}.tar.gz" >> "$GITHUB_OUTPUT"
           echo "archive_path=${archive}.tar.gz" >> "$GITHUB_OUTPUT"
+      - name: Create Debian package
+        if: github.event_name == 'push' && matrix.archive_os == 'ubuntu'
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          deb_arch="${{ matrix.deb_arch }}"
+          pkg_name="lpc55-support_${version}_${deb_arch}"
+          staging="deb/${pkg_name}"
+          mkdir -p "${staging}/usr/bin" "${staging}/usr/share/doc/lpc55-support"
+          install -Dm755 "target/release/lpc55_sign" "${staging}/usr/bin/lpc55_sign"
+          install -Dm755 "target/release/lpc55_flash" "${staging}/usr/bin/lpc55_flash"
+          install -Dm755 "target/release/cfpa-update" "${staging}/usr/bin/cfpa-update"
+          install -Dm644 README.md "${staging}/usr/share/doc/lpc55-support/README.md"
+          control_dir="${staging}/DEBIAN"
+          mkdir -p "${control_dir}"
+          cat > "${control_dir}/control" <<EOF
+Package: lpc55-support
+Version: ${version}
+Section: utils
+Priority: optional
+Architecture: ${deb_arch}
+Maintainer: LPC55 Support Maintainers <maintainers@example.com>
+Description: Tools for NXP LPC55 microcontrollers
+ Provides lpc55_sign, lpc55_flash, and cfpa-update command-line utilities.
+EOF
+          dpkg-deb --build --root-owner-group "${staging}" "lpc55-support_${version}_${deb_arch}.deb"
       - name: Upload archive
         if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.archive_name }}
           path: ${{ steps.package.outputs.archive_path }}
+      - name: Upload Debian package
+        if: github.event_name == 'push' && matrix.archive_os == 'ubuntu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lpc55-support_${{ steps.version.outputs.version }}_${{ matrix.deb_arch }}.deb
+          path: lpc55-support_${{ steps.version.outputs.version }}_${{ matrix.deb_arch }}.deb
 
   publish:
     needs: dist
@@ -149,7 +184,7 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob globstar
-          files=(release/**/*.tar.gz)
+          files=(release/**/*.tar.gz release/**/*.deb)
           if (( ${#files[@]} == 0 )); then
             echo "No archives found" >&2
             exit 1
