@@ -37,6 +37,13 @@ jobs:
             archive_arch: x86_64
             deb_arch: ~
             exe_suffix: ".exe"
+          - display: windows-arm64
+            runner: windows-latest
+            target: aarch64-pc-windows-msvc
+            archive_os: windows
+            archive_arch: arm64
+            deb_arch: ~
+            exe_suffix: ".exe"
     env:
       CARGO_TERM_COLOR: always
     defaults:
