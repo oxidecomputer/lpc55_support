@@ -72,7 +72,19 @@ jobs:
             sha="${GITHUB_SHA::7}"
             version="${sanitized}-${sha}"
           fi
+          deb_version="$version"
+          if [[ "$deb_version" =~ ^[vV][0-9] ]]; then
+            deb_version="${deb_version:1}"
+          fi
+          deb_version=$(echo "$deb_version" | sed -e 's/[^A-Za-z0-9.+~]/./g' -e 's/\.\{2,\}/./g' -e 's/^[.+]*//')
+          if [[ -z "$deb_version" ]]; then
+            deb_version="0"
+          fi
+          if [[ ! "$deb_version" =~ ^[0-9] ]]; then
+            deb_version="0~${deb_version}"
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "deb_version=$deb_version" >> "$GITHUB_OUTPUT"
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
@@ -105,9 +117,10 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ steps.version.outputs.version }}"
+          deb_version="${{ steps.version.outputs.deb_version }}"
           deb_arch="${{ matrix.deb_arch }}"
           exe_suffix="${{ matrix.exe_suffix }}"
-          pkg_name="lpc55-support_${version}_${deb_arch}"
+          pkg_name="lpc55-support_${deb_version}_${deb_arch}"
           staging="deb/${pkg_name}"
           rm -rf "${staging}"
           mkdir -p "${staging}/usr/bin" "${staging}/usr/share/doc/lpc55-support"
@@ -119,7 +132,7 @@ jobs:
           mkdir -p "${control_dir}"
           {
             printf 'Package: lpc55-support\n'
-            printf 'Version: %s\n' "${version}"
+            printf 'Version: %s\n' "${deb_version}"
             printf 'Section: utils\n'
             printf 'Priority: optional\n'
             printf 'Architecture: %s\n' "${deb_arch}"
@@ -127,7 +140,7 @@ jobs:
             printf 'Description: Tools for NXP LPC55 microcontrollers\n'
             printf ' Provides lpc55_sign, lpc55_flash, and cfpa-update command-line utilities.\n'
           } > "${control_dir}/control"
-          dpkg-deb --build --root-owner-group "${staging}" "lpc55-support_${version}_${deb_arch}.deb"
+          dpkg-deb --build --root-owner-group "${staging}" "lpc55-support_${deb_version}_${deb_arch}.deb"
       - name: Upload archive
         if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
@@ -138,8 +151,8 @@ jobs:
         if: github.event_name == 'push' && matrix.archive_os == 'ubuntu'
         uses: actions/upload-artifact@v4
         with:
-          name: lpc55-support_${{ steps.version.outputs.version }}_${{ matrix.deb_arch }}.deb
-          path: lpc55-support_${{ steps.version.outputs.version }}_${{ matrix.deb_arch }}.deb
+          name: lpc55-support_${{ steps.version.outputs.deb_version }}_${{ matrix.deb_arch }}.deb
+          path: lpc55-support_${{ steps.version.outputs.deb_version }}_${{ matrix.deb_arch }}.deb
 
   publish:
     needs: dist
