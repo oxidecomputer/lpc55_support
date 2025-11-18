@@ -106,25 +106,27 @@ jobs:
           set -euo pipefail
           version="${{ steps.version.outputs.version }}"
           deb_arch="${{ matrix.deb_arch }}"
+          exe_suffix="${{ matrix.exe_suffix }}"
           pkg_name="lpc55-support_${version}_${deb_arch}"
           staging="deb/${pkg_name}"
+          rm -rf "${staging}"
           mkdir -p "${staging}/usr/bin" "${staging}/usr/share/doc/lpc55-support"
-          install -Dm755 "target/release/lpc55_sign" "${staging}/usr/bin/lpc55_sign"
-          install -Dm755 "target/release/lpc55_flash" "${staging}/usr/bin/lpc55_flash"
-          install -Dm755 "target/release/cfpa-update" "${staging}/usr/bin/cfpa-update"
+          install -Dm755 "target/release/lpc55_sign${exe_suffix}" "${staging}/usr/bin/lpc55_sign"
+          install -Dm755 "target/release/lpc55_flash${exe_suffix}" "${staging}/usr/bin/lpc55_flash"
+          install -Dm755 "target/release/cfpa-update${exe_suffix}" "${staging}/usr/bin/cfpa-update"
           install -Dm644 README.md "${staging}/usr/share/doc/lpc55-support/README.md"
           control_dir="${staging}/DEBIAN"
           mkdir -p "${control_dir}"
-          cat > "${control_dir}/control" <<EOF
-Package: lpc55-support
-Version: ${version}
-Section: utils
-Priority: optional
-Architecture: ${deb_arch}
-Maintainer: LPC55 Support Maintainers <maintainers@example.com>
-Description: Tools for NXP LPC55 microcontrollers
- Provides lpc55_sign, lpc55_flash, and cfpa-update command-line utilities.
-EOF
+          {
+            printf 'Package: lpc55-support\n'
+            printf 'Version: %s\n' "${version}"
+            printf 'Section: utils\n'
+            printf 'Priority: optional\n'
+            printf 'Architecture: %s\n' "${deb_arch}"
+            printf 'Maintainer: LPC55 Support Maintainers <maintainers@example.com>\n'
+            printf 'Description: Tools for NXP LPC55 microcontrollers\n'
+            printf ' Provides lpc55_sign, lpc55_flash, and cfpa-update command-line utilities.\n'
+          } > "${control_dir}/control"
           dpkg-deb --build --root-owner-group "${staging}" "lpc55-support_${version}_${deb_arch}.deb"
       - name: Upload archive
         if: github.event_name == 'push'
