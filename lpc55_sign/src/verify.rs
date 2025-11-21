@@ -375,6 +375,10 @@ pub fn print_cfpa(cfpa: CFPAPage) -> Result<(), Error> {
 fn check_signed_image(image: &[u8], cmpa: CMPAPage, cfpa: CFPAPage) -> Result<(), Error> {
     let (cert_block, digest, signature) = image_certs_and_sig(image)?;
 
+    if cert_block.root_key_table_hash != cmpa.rotkh {
+        return Err(Error::RotkhMismatch);
+    }
+
     let mut prev_public_key = None;
     for cert in cert_block.certs.iter() {
         let cmpa_rsa4k = cmpa.get_secure_boot_cfg()?.rsa4k;
