@@ -16,7 +16,7 @@ jobs:
 
     steps:
       # check out our code
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       # install rust toolchain
       - uses: actions-rs/toolchain@v1
