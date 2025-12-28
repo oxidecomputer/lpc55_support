@@ -10,7 +10,6 @@ use lpc55_isp::isp::{do_ping, BootloaderProperty, KeyType};
 use serialport::{DataBits, FlowControl, Parity, StopBits};
 use std::io::{ErrorKind, Read, Write};
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::time::Duration;
 
 #[derive(Debug, Parser)]
@@ -96,7 +95,6 @@ enum ISPCommand {
         file: PathBuf,
     },
     GetProperty {
-        #[arg(value_parser = BootloaderProperty::from_str)]
         prop: BootloaderProperty,
     },
     LastError,
