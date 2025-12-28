@@ -2,12 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use clap::ValueEnum;
 use crc_any::CRCu16;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 use packed_struct::prelude::*;
 use std::convert::TryInto;
-use strum_macros::EnumString;
 use thiserror::Error;
 
 #[repr(u8)]
@@ -90,7 +90,7 @@ impl PacketHeader {
 }
 
 #[repr(C)]
-#[derive(Debug, EnumString, FromPrimitive, Clone, Copy)]
+#[derive(Debug, FromPrimitive, Clone, Copy, ValueEnum)]
 pub enum BootloaderProperty {
     BootloaderVersion = 1,
     AvailablePeripherals = 2,
