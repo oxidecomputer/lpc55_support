@@ -580,10 +580,12 @@ fn main() -> Result<()> {
             do_save_keystore(&mut *port)?;
         }
         ISPCommand::GetProperty { prop } => {
+            do_ping(&mut *port)?;
             let result = do_isp_get_property(&mut *port, prop)?;
             pretty_print_bootloader_prop(prop, result);
         }
         ISPCommand::LastError => {
+            do_ping(&mut *port)?;
             let result = do_isp_last_error(&mut *port)?;
             pretty_print_error(result);
         }
