@@ -6,7 +6,7 @@ use anyhow::{bail, Context, Result};
 use byteorder::ByteOrder;
 use clap::Parser;
 use lpc55_isp::cmd::*;
-use lpc55_isp::isp::{do_ping, BootloaderProperty, KeyType};
+use lpc55_isp::isp::{BootloaderProperty, KeyType, Isp};
 use serialport::{DataBits, FlowControl, Parity, StopBits};
 use std::io::{ErrorKind, Read, Write};
 use std::path::PathBuf;
@@ -109,7 +109,7 @@ enum CfpaChoice {
 
 #[derive(Debug, Parser)]
 #[clap(name = "isp")]
-struct Isp {
+struct IspArgs {
     /// UART port
     #[clap(name = "port")]
     port: String,
@@ -239,7 +239,7 @@ fn pretty_print_error(params: Vec<u32>) {
 }
 
 fn main() -> Result<()> {
-    let cmd = Isp::parse();
+    let cmd = IspArgs::parse();
 
     // The target _technically_ has autobaud but it's very flaky
     // and these seem to be the preferred settings
@@ -282,7 +282,7 @@ fn main() -> Result<()> {
 
     match cmd.cmd {
         ISPCommand::Ping => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
             println!("ping success.");
         }
         ISPCommand::ReadMemory {
@@ -290,9 +290,9 @@ fn main() -> Result<()> {
             count,
             path,
         } => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
-            let m = do_isp_read_memory(&mut *port, address, count)?;
+            let m = do_isp_read_memory(&mut port, address, count)?;
 
             let mut out = std::fs::OpenOptions::new()
                 .write(true)
@@ -304,19 +304,19 @@ fn main() -> Result<()> {
             println!("Output written to {:?}", path);
         }
         ISPCommand::WriteMemory { address, file } => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
             println!("If you didn't already erase the flash this operation will fail!");
             println!("This operation may take a while");
             let infile = std::fs::read(file)?;
 
-            do_isp_write_memory(&mut *port, address, &infile)?;
+            do_isp_write_memory(&mut port, address, &infile)?;
             println!("Write complete!");
         }
         ISPCommand::FlashEraseAll => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
-            do_isp_flash_erase_all(&mut *port)?;
+            do_isp_flash_erase_all(&mut port)?;
 
             println!("Flash erased!");
         }
@@ -324,36 +324,36 @@ fn main() -> Result<()> {
             start_address,
             byte_count,
         } => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
-            do_isp_flash_erase_region(&mut *port, start_address, byte_count)?;
+            do_isp_flash_erase_region(&mut port, start_address, byte_count)?;
 
             println!("Flash region erased!");
         }
         // Yes this is just another write-memory call but remembering addresses
         // is hard.
         ISPCommand::WriteCMPA { file } => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
             let infile = std::fs::read(file)?;
 
-            do_isp_write_memory(&mut *port, 0x9e400, &infile)?;
+            do_isp_write_memory(&mut port, 0x9e400, &infile)?;
             println!("Write to CMPA done!");
         }
         ISPCommand::EraseCMPA => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
             // Write 512 bytes of zero
             let bytes = [0; 512];
 
-            do_isp_write_memory(&mut *port, 0x9e400, &bytes)?;
+            do_isp_write_memory(&mut port, 0x9e400, &bytes)?;
             println!("CMPA region erased!");
             println!("You can now boot unsigned images");
         }
         ISPCommand::ReadCMPA { file } => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
-            let m = do_isp_read_memory(&mut *port, 0x9e400, 512)?;
+            let m = do_isp_read_memory(&mut port, 0x9e400, 512)?;
 
             let mut out = match file {
                 Some(ref path) => Box::new(
@@ -370,7 +370,7 @@ fn main() -> Result<()> {
             eprintln!("CMPA Output written to {:?}", file);
         }
         ISPCommand::ReadCFPA { page, file } => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
             let data = if let Some(page) = page {
                 // Only read one page as requested
@@ -379,12 +379,12 @@ fn main() -> Result<()> {
                     CfpaChoice::Ping => 0x9e000,
                     CfpaChoice::Pong => 0x9e200,
                 };
-                do_isp_read_memory(&mut *port, addr, 512)?
+                do_isp_read_memory(&mut port, addr, 512)?
             } else {
                 // Read ping and pong pages and only write out the latest one.
-                let ping = do_isp_read_memory(&mut *port, 0x9e000, 512)
+                let ping = do_isp_read_memory(&mut port, 0x9e000, 512)
                     .context("reading CFPA ping page")?;
-                let pong = do_isp_read_memory(&mut *port, 0x9e200, 512)
+                let pong = do_isp_read_memory(&mut port, 0x9e200, 512)
                     .context("reading CFPA pong page")?;
                 let ping_d = lpc55_areas::CFPAPage::from_bytes(ping[..].try_into().unwrap())?;
                 let pong_d = lpc55_areas::CFPAPage::from_bytes(pong[..].try_into().unwrap())?;
@@ -414,7 +414,7 @@ fn main() -> Result<()> {
             update_version,
             file,
         } => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
             let bytes = std::fs::read(file)?;
             let mut new_cfpa = lpc55_areas::CFPAPage::from_bytes(
@@ -423,7 +423,7 @@ fn main() -> Result<()> {
 
             // Read the CMPA so we can compare the two to try to avoid locking
             // the user out of their chip.
-            let m = do_isp_read_memory(&mut *port, 0x9e400, 512)?;
+            let m = do_isp_read_memory(&mut port, 0x9e400, 512)?;
             let cmpa = lpc55_areas::CMPAPage::from_bytes(m[..].try_into().unwrap())?;
             if (new_cfpa.dcfg_cc_socu_ns_pin != 0 || new_cfpa.dcfg_cc_socu_ns_dflt != 0)
                 && (cmpa.cc_socu_pin == 0 || cmpa.cc_socu_dflt == 0)
@@ -439,8 +439,8 @@ fn main() -> Result<()> {
             if update_version {
                 // Read the current CFPA areas to figure out what version we
                 // need to set.
-                let ping = do_isp_read_memory(&mut *port, 0x9_e000, 512)?;
-                let pong = do_isp_read_memory(&mut *port, 0x9_e200, 512)?;
+                let ping = do_isp_read_memory(&mut port, 0x9_e000, 512)?;
+                let pong = do_isp_read_memory(&mut port, 0x9_e200, 512)?;
 
                 let ping = lpc55_areas::CFPAPage::from_bytes(ping[..].try_into().unwrap())?;
                 let pong = lpc55_areas::CFPAPage::from_bytes(pong[..].try_into().unwrap())?;
@@ -455,14 +455,14 @@ fn main() -> Result<()> {
             }
 
             let new_bytes = new_cfpa.to_vec()?;
-            do_isp_write_memory(&mut *port, 0x9_de00, &new_bytes)?;
+            do_isp_write_memory(&mut port, 0x9_de00, &new_bytes)?;
             println!("Write to CFPA done!");
         }
         ISPCommand::Restore => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
             println!("Erasing flash");
-            do_isp_flash_erase_all(&mut *port)?;
+            do_isp_flash_erase_all(&mut port)?;
             println!("Erasing done.");
 
             // we need to fill 0x134 bytes to cover the vector table
@@ -482,57 +482,57 @@ fn main() -> Result<()> {
             byteorder::LittleEndian::write_u32(&mut bytes[0x130..0x134], 0xe7fee7fe);
 
             println!("Writing bytes");
-            do_isp_write_memory(&mut *port, 0x0, &bytes)?;
+            do_isp_write_memory(&mut port, 0x0, &bytes)?;
 
             println!("Restore done! SWD should work now.");
         }
         ISPCommand::SendSBUpdate { file } => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
             println!("Sending SB file, this may take a while");
             let infile = std::fs::read(file)?;
 
-            do_recv_sb_file(&mut *port, &infile)?;
+            do_recv_sb_file(&mut port, &infile)?;
             println!("Send complete!");
         }
         ISPCommand::Enroll => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
             println!("Generating new activation code");
 
-            do_enroll(&mut *port)?;
+            do_enroll(&mut port)?;
             println!("done.");
             println!("If you want to save this, remember to write to non-volatile memory");
         }
         ISPCommand::GenerateUDS => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
             println!("Generating new UDS");
 
-            do_generate_uds(&mut *port)?;
+            do_generate_uds(&mut port)?;
             println!("done.");
             println!("If you want to save this, remember to write to non-volatile memory");
         }
         ISPCommand::WriteKeyStore => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
             println!("Writing key store to flash");
-            do_save_keystore(&mut *port)?;
+            do_save_keystore(&mut port)?;
             println!("done.");
         }
         ISPCommand::EraseKeyStore => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
             println!("Erasing existing keystore");
             // Write 3 * 512 bytes of 0
             let bytes = vec![0; 512 * 3];
 
-            do_isp_write_keystore(&mut *port, &bytes)?;
-            do_save_keystore(&mut *port)?;
+            do_isp_write_keystore(&mut port, &bytes)?;
+            do_save_keystore(&mut port)?;
             println!("done.")
         }
         ISPCommand::SetSBKek { file } => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
             let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
 
@@ -544,19 +544,19 @@ fn main() -> Result<()> {
 
             actual_bytes.reverse();
 
-            do_isp_set_userkey(&mut *port, KeyType::SBKEK, &actual_bytes)?;
+            do_isp_set_userkey(&mut port, KeyType::SBKEK, &actual_bytes)?;
             println!("done.");
         }
         ISPCommand::SetupKeyStore { file } => {
-            do_ping(&mut *port)?;
+            port.do_ping()?;
 
             // Step 1: Enroll
             println!("Generating new activation code");
-            do_enroll(&mut *port)?;
+            do_enroll(&mut port)?;
 
             // Step 2: Generate UDS
             println!("Generating new UDS");
-            do_generate_uds(&mut *port)?;
+            do_generate_uds(&mut port)?;
 
             // Step 3: Set the SBKEK
             let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
@@ -571,20 +571,20 @@ fn main() -> Result<()> {
             actual_bytes.reverse();
 
             println!("Setting user key");
-            do_isp_set_userkey(&mut *port, KeyType::SBKEK, &actual_bytes)?;
+            do_isp_set_userkey(&mut port, KeyType::SBKEK, &actual_bytes)?;
 
             println!("Writing keystore");
             // Step 4: Write the keystore to persistent storage
-            do_save_keystore(&mut *port)?;
+            do_save_keystore(&mut port)?;
         }
         ISPCommand::GetProperty { prop } => {
-            do_ping(&mut *port)?;
-            let result = do_isp_get_property(&mut *port, prop)?;
+            port.do_ping()?;
+            let result = do_isp_get_property(&mut port, prop)?;
             pretty_print_bootloader_prop(prop, result);
         }
         ISPCommand::LastError => {
-            do_ping(&mut *port)?;
-            let result = do_isp_last_error(&mut *port)?;
+            port.do_ping()?;
+            let result = do_isp_last_error(&mut port)?;
             pretty_print_error(result);
         }
     }

@@ -6,7 +6,7 @@ use anyhow::Result;
 use clap::Parser;
 use lpc55_areas::*;
 use lpc55_isp::cmd::{do_isp_read_memory, do_isp_write_memory};
-use lpc55_isp::isp::do_ping;
+use lpc55_isp::isp::Isp;
 use packed_struct::prelude::*;
 use serialport::{DataBits, FlowControl, Parity, StopBits};
 use std::io::Write;
@@ -39,10 +39,10 @@ fn main() -> Result<()> {
         .stop_bits(StopBits::One)
         .open()?;
 
-    do_ping(port.as_mut())?;
+    port.do_ping()?;
 
     // 0x9de00 is the fixed address of the CFPA region
-    let m = do_isp_read_memory(&mut *port, 0x9de00, 512)?;
+    let m = do_isp_read_memory(&mut port, 0x9de00, 512)?;
 
     let mut cfpa: [u8; 512] = [0; 512];
 
@@ -74,7 +74,7 @@ fn main() -> Result<()> {
     } else {
         println!("Writing updated CFPA region back to the device");
 
-        do_isp_write_memory(&mut *port, 0x9de00, &updated)?;
+        do_isp_write_memory(&mut port, 0x9de00, &updated)?;
         println!("done!");
     }
 
