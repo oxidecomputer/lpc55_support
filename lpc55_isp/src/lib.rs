@@ -5,3 +5,4 @@
 pub mod cmd;
 pub mod isp;
 pub mod serial;
+pub mod usb;

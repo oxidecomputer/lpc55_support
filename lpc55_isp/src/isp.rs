@@ -10,18 +10,6 @@ use thiserror::Error;
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
-pub enum PacketType {
-    Ack = 0xA1,
-    //Nak = 0xA2,
-    AckAbort = 0xA3,
-    Command = 0xA4,
-    Data = 0xA5,
-    Ping = 0xA6,
-    PingResponse = 0xA7,
-}
-
-#[repr(u8)]
-#[derive(Copy, Clone, Debug)]
 pub enum ResponseCode {
     Generic = 0xA0,
     ReadMemory = 0xA3,
@@ -69,25 +57,6 @@ pub enum CommandTag {
 }
 
 #[repr(C)]
-#[derive(Debug, PackedStruct)]
-#[packed_struct(size_bytes = "2", bit_numbering = "msb0", endian = "msb")]
-pub struct PacketHeader {
-    #[packed_field(bytes = "0")]
-    pub start_byte: u8,
-    #[packed_field(bytes = "1")]
-    pub packet_type: u8,
-}
-
-impl PacketHeader {
-    pub fn new(ptype: PacketType) -> PacketHeader {
-        PacketHeader {
-            start_byte: 0x5A_u8,
-            packet_type: ptype as u8,
-        }
-    }
-}
-
-#[repr(C)]
 #[derive(Debug, FromPrimitive, Clone, Copy, ValueEnum)]
 pub enum BootloaderProperty {
     BootloaderVersion = 1,
@@ -109,22 +78,6 @@ pub enum BootloaderProperty {
     FlashPageSize = 27,
     IRQPinStatus = 28,
     FFRKeyStoreStatus = 29,
-}
-
-#[repr(C)]
-#[derive(Debug, PackedStruct)]
-#[packed_struct(bit_numbering = "msb0")]
-pub struct PingResponse {
-    #[packed_field(size_bytes = "2")]
-    pub header: PacketHeader,
-    pub protocol_bugfix: u8,
-    pub protocol_minor: u8,
-    pub protocol_major: u8,
-    pub protocol_name: u8,
-    pub options_low: u8,
-    pub options_high: u8,
-    pub crc16_low: u8,
-    pub crc16_high: u8,
 }
 
 #[derive(Debug, PackedStruct, Default)]
@@ -150,9 +103,15 @@ impl RawCommand {
 
 pub trait Isp {
     fn do_ping(&mut self) -> Result<(), IspError>;
-    fn read_data(&mut self) -> Result<Vec<u8>, IspError>;
-    fn read_response(&mut self, response_type: ResponseCode) -> Result<Vec<u32>, IspError>;
-    fn send_command(&mut self, cmd: CommandTag, args: impl Into<Vec<u32>>) -> Result<(), IspError>;
+    fn read_response(
+        &mut self,
+        response_type: ResponseCode,
+    ) -> Result<Vec<u32>, IspError>;
+    fn send_command(
+        &mut self,
+        cmd: CommandTag,
+        args: &[u32],
+    ) -> Result<(), IspError>;
     fn send_data(&mut self, data: &[u8]) -> Result<(), IspError>;
     fn recv_data(&mut self, cnt: u32) -> Result<Vec<u8>, IspError>;
 }
@@ -163,16 +122,6 @@ pub fn retval2err(retval: u32) -> StatusResponse {
     } else {
         StatusResponse::GenericErrorCode(retval)
     }
-}
-
-pub fn require_packet_type(header: &PacketHeader, ty: PacketType) -> Result<(), IspError> {
-    if header.packet_type != ty as u8 {
-        return Err(IspError::WrongPacket {
-            expected: ty,
-            got: header.packet_type,
-        });
-    }
-    Ok(())
 }
 
 /// Errors encountered during ISP interaction with the LPC55.
@@ -186,7 +135,7 @@ pub enum IspError {
     /// the next packet should be of type `expected`, we instead got a packet of
     /// type `got`.
     #[error("Expected a {expected:?} packet, got {got:#02x}")]
-    WrongPacket { expected: PacketType, got: u8 },
+    WrongPacket { expected: u8, got: u8 },
 
     /// We got the packet we were expecting but it contained an unexpcted
     /// response code.
@@ -257,7 +206,9 @@ pub enum StatusResponse {
 /// messages.
 ///
 /// See LPC55 User Manual chapter 8.7 table 251 for more.
-#[derive(Debug, FromPrimitive, Copy, Clone, Eq, PartialEq, ToPrimitive, Error)]
+#[derive(
+    Debug, FromPrimitive, Copy, Clone, Eq, PartialEq, ToPrimitive, Error,
+)]
 pub enum KnownError {
     #[error("Cumulative write error (did you forget to erase?) (err 10203)")]
     CumulativeWriteError = 10203,

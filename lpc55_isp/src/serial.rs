@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // This implementation focuses on UART as that is the common interface available
-// on hosts, however the packet format should apply to other serial protocols
+// on hosts, however the packet format applies to other serial protocols
 
 use crate::isp::*;
 use crc_any::CRCu16;
@@ -11,6 +11,66 @@ use packed_struct::prelude::*;
 use serialport::SerialPort;
 use std::convert::TryInto;
 use std::io::Read;
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug)]
+pub enum PacketType {
+    Ack = 0xA1,
+    //Nak = 0xA2,
+    AckAbort = 0xA3,
+    Command = 0xA4,
+    Data = 0xA5,
+    Ping = 0xA6,
+    PingResponse = 0xA7,
+}
+
+#[repr(C)]
+#[derive(Debug, PackedStruct)]
+#[packed_struct(size_bytes = "2", bit_numbering = "msb0", endian = "msb")]
+pub struct PacketHeader {
+    #[packed_field(bytes = "0")]
+    pub start_byte: u8,
+    #[packed_field(bytes = "1")]
+    pub packet_type: u8,
+}
+
+impl PacketHeader {
+    pub fn new(ptype: PacketType) -> PacketHeader {
+        PacketHeader {
+            start_byte: 0x5A_u8,
+            packet_type: ptype as u8,
+        }
+    }
+}
+
+pub fn require_packet_type(
+    frame: &FramingPacket,
+    ty: PacketType,
+) -> Result<(), IspError> {
+    if frame.header.packet_type != ty as u8 {
+        return Err(IspError::WrongPacket {
+            expected: ty as u8,
+            got: frame.header.packet_type,
+        });
+    }
+    Ok(())
+}
+
+#[repr(C)]
+#[derive(Debug, PackedStruct)]
+#[packed_struct(bit_numbering = "msb0")]
+pub struct PingResponse {
+    #[packed_field(size_bytes = "2")]
+    pub header: PacketHeader,
+    pub protocol_bugfix: u8,
+    pub protocol_minor: u8,
+    pub protocol_major: u8,
+    pub protocol_name: u8,
+    pub options_low: u8,
+    pub options_high: u8,
+    pub crc16_low: u8,
+    pub crc16_high: u8,
+}
 
 #[repr(C)]
 #[derive(Debug, PackedStruct)]
@@ -68,7 +128,8 @@ impl CommandPacket {
         let arg_bytes = args.len() * 4;
         // Total length of the command packet. the 4 bytes are for
         // the fixed fields
-        let len: u16 = u16::try_from(4 + arg_bytes).expect("args vec too long for command packet");
+        let len: u16 = u16::try_from(4 + arg_bytes)
+            .expect("args vec too long for command packet");
 
         v.packet.length_low = (len & 0xFF) as u8;
         v.packet.length_high = ((len >> 8) & 0xff) as u8;
@@ -118,7 +179,8 @@ pub struct DataPacket {
 impl DataPacket {
     fn new_data(args: impl Into<Vec<u8>>) -> DataPacket {
         let args = args.into();
-        let arg_len = u16::try_from(args.len()).expect("args vector too long for DataPacket");
+        let arg_len = u16::try_from(args.len())
+            .expect("args vector too long for DataPacket");
 
         let mut f = FramingPacket::new(PacketType::Data);
 
@@ -192,7 +254,30 @@ fn read_ack(port: &mut Box<dyn SerialPort>) -> Result<(), IspError> {
     Ok(())
 }
 
-fn check_crc(frame_bytes: &[u8], response: &[u8], frame: &FramingPacket) -> Result<(), IspError> {
+fn read_data(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>, IspError> {
+    let mut frame_bytes =
+        vec![0; FramingPacket::packed_bytes_size(None).unwrap()];
+    port.read_exact(&mut frame_bytes)?;
+
+    let frame = FramingPacket::unpack_from_slice(&frame_bytes).unwrap();
+
+    require_packet_type(&frame, PacketType::Data)?;
+
+    let length =
+        usize::from(u16::from_le_bytes([frame.length_low, frame.length_high]));
+    let mut response = vec![0; length];
+    port.read_exact(&mut response)?;
+
+    check_crc(&frame_bytes, &response, &frame)?;
+
+    Ok(response)
+}
+
+fn check_crc(
+    frame_bytes: &[u8],
+    response: &[u8],
+    frame: &FramingPacket,
+) -> Result<(), IspError> {
     let mut crc = CRCu16::crc16xmodem();
     crc.digest(&frame_bytes[..0x4]);
     crc.digest(&frame_bytes[0x6..]);
@@ -226,7 +311,8 @@ impl Isp for Box<dyn SerialPort> {
 
         self.read_exact(&mut response_bytes)?;
 
-        let response = PingResponse::unpack(&response_bytes).map_err(IspError::Unpack)?;
+        let response =
+            PingResponse::unpack(&response_bytes).map_err(IspError::Unpack)?;
 
         if response.header.packet_type != (PacketType::PingResponse as u8) {
             return Err(IspError::BadAck(response.header.packet_type));
@@ -235,35 +321,25 @@ impl Isp for Box<dyn SerialPort> {
         Ok(())
     }
 
-    fn read_data(&mut self) -> Result<Vec<u8>, IspError> {
-        let mut frame_bytes = vec![0; FramingPacket::packed_bytes_size(None).unwrap()];
-        self.read_exact(&mut frame_bytes)?;
-
-        let frame = FramingPacket::unpack_from_slice(&frame_bytes).unwrap();
-
-        require_packet_type(&frame.header, PacketType::Data)?;
-
-        let length = usize::from(u16::from_le_bytes([frame.length_low, frame.length_high]));
-        let mut response = vec![0; length];
-        self.read_exact(&mut response)?;
-
-        check_crc(&frame_bytes, &response, &frame)?;
-
-        Ok(response)
-    }
-
     // Okay _technically_ the response can return values from get-property but for
     // now just return (). If we _really_ need properties we can add that later
-    fn read_response(&mut self, response_type: ResponseCode) -> Result<Vec<u32>, IspError> {
-        let mut frame_bytes = vec![0; FramingPacket::packed_bytes_size(None).unwrap()];
+    fn read_response(
+        &mut self,
+        response_type: ResponseCode,
+    ) -> Result<Vec<u32>, IspError> {
+        let mut frame_bytes =
+            vec![0; FramingPacket::packed_bytes_size(None).unwrap()];
         self.read_exact(&mut frame_bytes)?;
 
         let frame = FramingPacket::unpack_from_slice(&frame_bytes).unwrap();
 
         // A response packet is a specific type of command packet.
-        require_packet_type(&frame.header, PacketType::Command)?;
+        require_packet_type(&frame, PacketType::Command)?;
 
-        let length: usize = usize::from(u16::from_le_bytes([frame.length_low, frame.length_high]));
+        let length: usize = usize::from(u16::from_le_bytes([
+            frame.length_low,
+            frame.length_high,
+        ]));
         let mut response = vec![0; length];
         self.read_exact(&mut response)?;
 
@@ -287,12 +363,12 @@ impl Isp for Box<dyn SerialPort> {
         let index = RawCommand::packed_bytes_size(None).unwrap();
 
         let end_of_params = index + usize::from(command.parameter_count) * 4;
-        let param_bytes = response
-            .get(index..end_of_params)
-            .ok_or(IspError::TruncatedParams {
+        let param_bytes = response.get(index..end_of_params).ok_or(
+            IspError::TruncatedParams {
                 expected_len: end_of_params,
                 actual_len: response.len(),
-            })?;
+            },
+        )?;
 
         for p in param_bytes.chunks_exact(4) {
             params.push(u32::from_le_bytes(p.try_into().unwrap()));
@@ -310,7 +386,11 @@ impl Isp for Box<dyn SerialPort> {
         }
     }
 
-    fn send_command(&mut self, cmd: CommandTag, args: impl Into<Vec<u32>>) -> Result<(), IspError> {
+    fn send_command(
+        &mut self,
+        cmd: CommandTag,
+        args: &[u32],
+    ) -> Result<(), IspError> {
         let command_bytes = CommandPacket::new_command(cmd, args).to_bytes();
 
         self.write_all(&command_bytes)?;
@@ -342,7 +422,7 @@ impl Isp for Box<dyn SerialPort> {
         let mut data = Vec::with_capacity(cnt);
 
         while data.len() < cnt {
-            data.extend_from_slice(&self.read_data()?);
+            data.extend_from_slice(&read_data(self)?);
             send_ack(self)?;
         }
 

@@ -6,7 +6,8 @@ use anyhow::{bail, Context, Result};
 use byteorder::ByteOrder;
 use clap::Parser;
 use lpc55_isp::cmd::*;
-use lpc55_isp::isp::{BootloaderProperty, KeyType, Isp};
+use lpc55_isp::isp::{BootloaderProperty, Isp, KeyType};
+use lpc55_isp::usb::UsbIsp;
 use serialport::{DataBits, FlowControl, Parity, StopBits};
 use std::io::{ErrorKind, Read, Write};
 use std::path::PathBuf;
@@ -107,12 +108,62 @@ enum CfpaChoice {
     Pong,
 }
 
+enum Interface {
+    Usb(UsbIsp),
+    Serial(Box<dyn serialport::SerialPort>),
+}
+
+impl Isp for Interface {
+    fn do_ping(&mut self) -> std::result::Result<(), lpc55_isp::isp::IspError> {
+        match self {
+            Interface::Usb(i) => i.do_ping(),
+            Interface::Serial(i) => i.do_ping(),
+        }
+    }
+
+    fn send_data(&mut self, data: &[u8]) -> std::result::Result<(), lpc55_isp::isp::IspError> {
+        match self {
+            Interface::Usb(i) => i.send_data(data),
+            Interface::Serial(i) => i.send_data(data),
+        }
+    }
+
+    fn recv_data(&mut self, cnt: u32) -> std::result::Result<Vec<u8>, lpc55_isp::isp::IspError> {
+        match self {
+            Interface::Usb(i) => i.recv_data(cnt),
+            Interface::Serial(i) => i.recv_data(cnt),
+        }
+    }
+
+    fn send_command(
+        &mut self,
+        cmd: lpc55_isp::isp::CommandTag,
+        args: &[u32],
+    ) -> std::result::Result<(), lpc55_isp::isp::IspError> {
+        match self {
+            Interface::Usb(i) => i.send_command(cmd, args),
+            Interface::Serial(i) => i.send_command(cmd, args),
+        }
+    }
+
+    fn read_response(
+        &mut self,
+        response_type: lpc55_isp::isp::ResponseCode,
+    ) -> std::result::Result<Vec<u32>, lpc55_isp::isp::IspError> {
+        match self {
+            Interface::Usb(i) => i.read_response(response_type),
+            Interface::Serial(i) => i.read_response(response_type),
+        }
+    }
+}
+
 #[derive(Debug, Parser)]
 #[clap(name = "isp")]
 struct IspArgs {
-    /// UART port
-    #[clap(name = "port")]
-    port: String,
+    #[arg(long)]
+    serial: Option<String>,
+    #[arg(long, conflicts_with = "serial")]
+    usb: Option<String>,
     /// How fast to run the UART. 57,600 baud seems very reliable but is rather
     /// slow. In certain test setups we've gotten rates of up to 1Mbaud to work
     /// reliably -- your mileage may vary!
@@ -241,44 +292,53 @@ fn pretty_print_error(params: Vec<u32>) {
 fn main() -> Result<()> {
     let cmd = IspArgs::parse();
 
-    // The target _technically_ has autobaud but it's very flaky
-    // and these seem to be the preferred settings
-    //
-    // We initially set the timeout short so we can drain the incoming buffer in
-    // a portable manner below. We'll adjust it up after that.
-    let mut port = serialport::new(&cmd.port, cmd.baud_rate)
-        .timeout(Duration::from_millis(100))
-        .data_bits(DataBits::Eight)
-        .flow_control(FlowControl::None)
-        .parity(Parity::None)
-        .stop_bits(StopBits::One)
-        .open()?;
+    env_logger::init();
 
-    // Extract any bytes left over in the serial port driver from previous
-    // interaction.
-    loop {
-        let mut throwaway = [0; 16];
-        match port.read(&mut throwaway) {
-            Ok(0) => {
-                // This should only happen on nonblocking reads, which we
-                // haven't asked for, but it does mean the buffer is empty so
-                // treat it as success.
-                break;
-            }
-            Ok(_) => {
-                // We've collected some characters to throw away, keep going.
-            }
-            Err(e) if e.kind() == ErrorKind::TimedOut => {
-                // Buffer is empty!
-                break;
-            }
-            Err(e) => {
-                return Err(e.into());
+    let mut port: Interface = if let Some(port) = cmd.serial {
+        // The target _technically_ has autobaud but it's very flaky
+        // and these seem to be the preferred settings
+        //
+        // We initially set the timeout short so we can drain the incoming buffer in
+        // a portable manner below. We'll adjust it up after that.
+        let mut port = serialport::new(&port, cmd.baud_rate)
+            .timeout(Duration::from_millis(100))
+            .data_bits(DataBits::Eight)
+            .flow_control(FlowControl::None)
+            .parity(Parity::None)
+            .stop_bits(StopBits::One)
+            .open()?;
+
+        // Extract any bytes left over in the serial port driver from previous
+        // interaction.
+        loop {
+            let mut throwaway = [0; 16];
+            match port.read(&mut throwaway) {
+                Ok(0) => {
+                    // This should only happen on nonblocking reads, which we
+                    // haven't asked for, but it does mean the buffer is empty so
+                    // treat it as success.
+                    break;
+                }
+                Ok(_) => {
+                    // We've collected some characters to throw away, keep going.
+                }
+                Err(e) if e.kind() == ErrorKind::TimedOut => {
+                    // Buffer is empty!
+                    break;
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
             }
         }
-    }
-    // Crank the timeout back up.
-    port.set_timeout(Duration::from_secs(1))?;
+        // Crank the timeout back up.
+        port.set_timeout(Duration::from_secs(1))?;
+        Interface::Serial(port)
+    } else if let Some(port) = cmd.usb {
+        Interface::Usb(UsbIsp::new(&port.parse()?)?)
+    } else {
+        bail!("You must choose --serial or --usb");
+    };
 
     match cmd.cmd {
         ISPCommand::Ping => {

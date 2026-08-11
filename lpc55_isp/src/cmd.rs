@@ -14,7 +14,7 @@ fn do_command<P: Isp>(
     port: &mut P,
     tag: CommandTag,
     command_resp: ResponseCode,
-    args: impl Into<Vec<u32>>,
+    args: &[u32],
     d: DataPhase,
 ) -> Result<Option<Vec<u8>>, IspError> {
     port.send_command(tag, args)?;
@@ -43,7 +43,7 @@ pub fn do_save_keystore<P: Isp>(port: &mut P) -> Result<(), IspError> {
         port,
         CommandTag::KeyProvision,
         ResponseCode::Generic,
-        [
+        &[
             // Arg 0 =  WriteNonVolatile
             KeyProvisionCmds::WriteNonVolatile as u32,
             // Arg 1 = Memory ID (0 = internal flash)
@@ -60,7 +60,7 @@ pub fn do_enroll<P: Isp>(port: &mut P) -> Result<(), IspError> {
         port,
         CommandTag::KeyProvision,
         ResponseCode::Generic,
-        [KeyProvisionCmds::Enroll as u32],
+        &[KeyProvisionCmds::Enroll as u32],
         DataPhase::NoData,
     )?;
 
@@ -72,7 +72,7 @@ pub fn do_generate_uds<P: Isp>(port: &mut P) -> Result<(), IspError> {
         port,
         CommandTag::KeyProvision,
         ResponseCode::Generic,
-        [
+        &[
             // Arg 0 =  SetIntrinsicKey
             KeyProvisionCmds::SetIntrinsicKey as u32,
             // Arg 1 = UDS
@@ -91,7 +91,7 @@ pub fn do_isp_write_keystore<P: Isp>(port: &mut P, data: &[u8]) -> Result<(), Is
         port,
         CommandTag::KeyProvision,
         ResponseCode::KeyProvision,
-        [KeyProvisionCmds::WriteKeyStore as u32],
+        &[KeyProvisionCmds::WriteKeyStore as u32],
         DataPhase::Send {
             code: ResponseCode::Generic,
             data,
@@ -106,7 +106,7 @@ pub fn do_recv_sb_file<P: Isp>(port: &mut P, data: &[u8]) -> Result<(), IspError
         port,
         CommandTag::ReceiveSbFile,
         ResponseCode::Generic,
-        [data.len() as u32],
+        &[data.len() as u32],
         DataPhase::Send {
             code: ResponseCode::Generic,
             data,
@@ -125,7 +125,7 @@ pub fn do_isp_set_userkey<P: Isp>(
         port,
         CommandTag::KeyProvision,
         ResponseCode::KeyProvision,
-        [
+        &[
             // Arg0 = Set User Key
             KeyProvisionCmds::SetUserKey as u32,
             // Arg1 =  Key type
@@ -151,7 +151,7 @@ pub fn do_isp_read_memory<P: Isp>(
         port,
         CommandTag::ReadMemory,
         ResponseCode::ReadMemory,
-        [
+        &[
             // Arg0 = address
             address, // Arg1 = length
             cnt,     // Arg2 = memory type
@@ -175,7 +175,7 @@ pub fn do_isp_write_memory<P: Isp>(
         port,
         CommandTag::WriteMemory,
         ResponseCode::Generic,
-        [
+        &[
             // arg 0 = address
             address,
             // arg 1 = len
@@ -197,7 +197,7 @@ pub fn do_isp_flash_erase_all<P: Isp>(port: &mut P) -> Result<(), IspError> {
         port,
         CommandTag::FlashEraseAll,
         ResponseCode::Generic,
-        [
+        &[
             // Erase internal flash
             0x0_u32,
         ],
@@ -216,7 +216,7 @@ pub fn do_isp_flash_erase_region<P: Isp>(
         port,
         CommandTag::FlashEraseRegion,
         ResponseCode::Generic,
-        [
+        &[
             start_address,
             byte_count,
             // Erase internal flash
@@ -232,7 +232,7 @@ pub fn do_isp_get_property<P: Isp>(
     port: &mut P,
     prop: BootloaderProperty,
 ) -> Result<Vec<u32>, IspError> {
-    port.send_command(CommandTag::GetProperty, [prop as u32])?;
+    port.send_command(CommandTag::GetProperty, &[prop as u32])?;
 
     let f = port.read_response(ResponseCode::GetProperty)?;
 
@@ -242,7 +242,7 @@ pub fn do_isp_get_property<P: Isp>(
 pub fn do_isp_last_error<P: Isp>(port: &mut P) -> Result<Vec<u32>, IspError> {
     port.send_command(
         CommandTag::GetProperty,
-        [
+        &[
             // Arg 0 = LastCRC
             BootloaderProperty::CRCStatus as u32,
             // Arg 1 = Last error
