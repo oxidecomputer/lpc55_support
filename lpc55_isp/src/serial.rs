@@ -8,9 +8,8 @@
 use crate::isp::*;
 use crc_any::CRCu16;
 use packed_struct::prelude::*;
-use serialport::SerialPort;
 use std::convert::TryInto;
-use std::io::Read;
+use std::io::{Read, Write};
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
@@ -216,7 +215,7 @@ impl DataPacket {
     }
 }
 
-fn send_ack(port: &mut Box<dyn SerialPort>) -> Result<(), IspError> {
+fn send_ack<RW: Read + Write>(port: &mut RW) -> Result<(), IspError> {
     let packet = PacketHeader::new(PacketType::Ack);
 
     let bytes = packet.pack().unwrap();
@@ -227,7 +226,7 @@ fn send_ack(port: &mut Box<dyn SerialPort>) -> Result<(), IspError> {
     Ok(())
 }
 
-fn read_ack(port: &mut Box<dyn SerialPort>) -> Result<(), IspError> {
+fn read_ack<RW: Read + Write>(port: &mut RW) -> Result<(), IspError> {
     let mut ack_bytes: [u8; 2] = [0; 2];
 
     port.read_exact(&mut ack_bytes)?;
@@ -254,7 +253,7 @@ fn read_ack(port: &mut Box<dyn SerialPort>) -> Result<(), IspError> {
     Ok(())
 }
 
-fn read_data(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>, IspError> {
+fn read_data<RW: Read + Write>(port: &mut RW) -> Result<Vec<u8>, IspError> {
     let mut frame_bytes =
         vec![0; FramingPacket::packed_bytes_size(None).unwrap()];
     port.read_exact(&mut frame_bytes)?;
@@ -297,7 +296,7 @@ fn check_crc(
     Ok(())
 }
 
-impl Isp for Box<dyn SerialPort> {
+impl<RW: Read + Write> Isp for RW {
     fn do_ping(&mut self) -> Result<(), IspError> {
         let ping = PacketHeader::new(PacketType::Ping);
 
@@ -429,4 +428,3 @@ impl Isp for Box<dyn SerialPort> {
         Ok(data)
     }
 }
-
