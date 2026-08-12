@@ -154,8 +154,11 @@ impl DataPacket {
 }
 
 impl Isp for UsbIsp {
-    // TODO figure out what the ping method is on USB
+    // Docs don't have an encoding for pings/acks on USB so we just read a
+    // property
     fn do_ping(&mut self) -> Result<(), IspError> {
+        self.send_command(CommandTag::GetProperty, &[1])?;
+        self.read_response(ResponseCode::GetProperty)?;
         Ok(())
     }
 
