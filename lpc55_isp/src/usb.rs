@@ -295,13 +295,19 @@ impl std::fmt::Debug for UsbId {
     }
 }
 
-// ideally we would use the serial here, but the ISP ROM bootloader doesn't seem
-// to provide one. in the case where multiple devices are present we let the
-// user optionally supply a port chain
-#[derive(Default, Debug, Clone)]
+// ideally we would use the serial number here, but the ISP ROM bootloader
+// doesn't seem to provide one. in the case where multiple devices are present
+// we let the user optionally supply a physical location
+#[derive(Debug, Clone)]
 pub struct DeviceSelector {
     pub usb_id: Option<UsbId>,
-    pub port_chain: Option<Vec<u8>>,
+    pub location: Option<Location>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Location {
+    pub bus_id: String,
+    pub port_chain: Vec<u8>,
 }
 
 #[derive(Error, Debug, PartialEq, Eq)]
@@ -313,28 +319,46 @@ pub enum ParseError {
     #[error("invalid device ID `{0}`")]
     InvalidDeviceId(String),
     #[error("invalid port chain `{0}`")]
-    InvalidPortChain(String),
+    InvalidLocation(String),
 }
 
-fn parse_port_chain(s: &str) -> Result<Vec<u8>, ParseError> {
-    s.trim()
-        .split("-")
-        .map(|v| {
-            v.parse::<u8>()
-                .map_err(|_| ParseError::InvalidPortChain(s.to_owned()))
-        })
-        .collect()
+impl std::str::FromStr for Location {
+    type Err = ParseError;
+
+    /// parse a string like "001@2-3-4" where "001" is the bus ID and "2-3-4" is
+    /// the port chain in base 10 integers
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let toks: Vec<&str> = s.trim().split('@').collect();
+
+        if toks.is_empty() {
+            return Err(ParseError::InvalidLocation("[empty]".to_owned()));
+        }
+
+        if toks.len() != 2 {
+            return Err(ParseError::InvalidLocation(s.to_owned()));
+        }
+
+        let bus_id = toks[0].to_owned();
+        let port_chain = toks[1]
+            .trim()
+            .split("-")
+            .map(|v| {
+                v.parse::<u8>()
+                    .map_err(|_| ParseError::InvalidLocation(s.to_owned()))
+            })
+            .collect::<Result<_, ParseError>>()?;
+
+        Ok(Location { bus_id, port_chain })
+    }
 }
 
 impl std::str::FromStr for DeviceSelector {
     type Err = ParseError;
 
     /// Parse a DeviceSelector from a string that looks like
-    /// `vid:pid[:port-chain-items]`
+    /// `vid:pid[:bus@port-chain-items]`
     ///
-    /// `vid` and `pid` are hex vendor/product IDs without 0x prefix. the port
-    /// chain is base 10 integers separated by '-' such as "1" or "1-5-2" with
-    /// left most being the first in the chain
+    /// `vid` and `pid` are hex vendor/product IDs without 0x prefix.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let toks: Vec<&str> = s.trim().split(":").collect();
         // ensure we have a reasonable number of tokens
@@ -350,8 +374,8 @@ impl std::str::FromStr for DeviceSelector {
                     ParseError::InvalidDeviceId(toks[1].to_owned())
                 })?,
             }),
-            port_chain: if let Some(port_chain) = toks.get(2) {
-                Some(parse_port_chain(port_chain)?)
+            location: if let Some(location) = toks.get(2) {
+                Some(location.parse()?)
             } else {
                 None
             },
@@ -370,9 +394,9 @@ impl UsbIsp {
                 } else {
                     true
                 };
-                let port_match = if let Some(ref chain_sel) = dev_sel.port_chain
-                {
-                    chain_sel == dev.port_chain()
+                let port_match = if let Some(ref loc_sel) = dev_sel.location {
+                    loc_sel.bus_id == dev.bus_id()
+                        && loc_sel.port_chain == dev.port_chain()
                 } else {
                     true
                 };
@@ -414,8 +438,9 @@ mod tests {
                 product_id: 0x55
             })
         );
-        assert_eq!(ds.port_chain, None);
-        let ds: DeviceSelector = "AA:55:1-2".parse().unwrap();
+        assert_eq!(ds.location, None);
+
+        let ds: DeviceSelector = "AA:55:001@1-2".parse().unwrap();
         assert_eq!(
             ds.usb_id,
             Some(UsbId {
@@ -423,8 +448,15 @@ mod tests {
                 product_id: 0x55
             })
         );
-        assert_eq!(ds.port_chain, Some(vec![1, 2]));
-        let ds: DeviceSelector = "AA:55:1".parse().unwrap();
+        assert_eq!(
+            ds.location,
+            Some(Location {
+                bus_id: "001".to_owned(),
+                port_chain: vec![1, 2]
+            })
+        );
+
+        let ds: DeviceSelector = "AA:55:002@1".parse().unwrap();
         assert_eq!(
             ds.usb_id,
             Some(UsbId {
@@ -432,7 +464,14 @@ mod tests {
                 product_id: 0x55
             })
         );
-        assert_eq!(ds.port_chain, Some(vec![1]));
+        assert_eq!(
+            ds.location,
+            Some(Location {
+                bus_id: "002".to_owned(),
+                port_chain: vec![1]
+            })
+        );
+
         let err = "AZ:55".parse::<DeviceSelector>().err().unwrap();
         assert!(matches!(err, ParseError::InvalidVendorId(_)));
         let err = "AA:5Z".parse::<DeviceSelector>().err().unwrap();
@@ -444,6 +483,6 @@ mod tests {
         let err = "Foo".parse::<DeviceSelector>().err().unwrap();
         assert!(matches!(err, ParseError::InvalidFormat(_)));
         let err = "AA:55:foo".parse::<DeviceSelector>().err().unwrap();
-        assert!(matches!(err, ParseError::InvalidPortChain(_)));
+        assert!(matches!(err, ParseError::InvalidLocation(_)));
     }
 }

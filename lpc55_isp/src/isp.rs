@@ -181,7 +181,7 @@ pub enum IspError {
     #[error("unpacking response failed")]
     Unpack(#[source] packed_struct::PackingError),
 
-    /// Our actual use of the serial port failed.
+    /// Our actual use of the I/O device failed.
     #[error("Communications error")]
     Comms(#[from] std::io::Error),
 }

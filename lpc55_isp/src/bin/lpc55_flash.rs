@@ -2,16 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context, Result, anyhow};
 use byteorder::ByteOrder;
-use clap::Parser;
+use clap::{Parser, CommandFactory};
 use lpc55_isp::cmd::*;
 use lpc55_isp::isp::{BootloaderProperty, Isp, KeyType};
-use lpc55_isp::usb::UsbIsp;
-use serialport::{DataBits, FlowControl, Parity, StopBits};
-use std::io::{ErrorKind, Read, Write};
+use lpc55_isp::util::*;
+use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::time::Duration;
 
 #[derive(Debug, Parser)]
 enum ISPCommand {
@@ -99,6 +97,8 @@ enum ISPCommand {
         prop: BootloaderProperty,
     },
     LastError,
+    /// List available devices
+    List,
 }
 
 #[derive(Copy, Clone, Debug, clap::ValueEnum)]
@@ -108,67 +108,26 @@ enum CfpaChoice {
     Pong,
 }
 
-enum Interface {
-    Usb(UsbIsp),
-    Serial(Box<dyn serialport::SerialPort>),
-}
-
-impl Isp for Interface {
-    fn do_ping(&mut self) -> std::result::Result<(), lpc55_isp::isp::IspError> {
-        match self {
-            Interface::Usb(i) => i.do_ping(),
-            Interface::Serial(i) => i.do_ping(),
-        }
-    }
-
-    fn send_data(&mut self, data: &[u8]) -> std::result::Result<(), lpc55_isp::isp::IspError> {
-        match self {
-            Interface::Usb(i) => i.send_data(data),
-            Interface::Serial(i) => i.send_data(data),
-        }
-    }
-
-    fn recv_data(&mut self, cnt: u32) -> std::result::Result<Vec<u8>, lpc55_isp::isp::IspError> {
-        match self {
-            Interface::Usb(i) => i.recv_data(cnt),
-            Interface::Serial(i) => i.recv_data(cnt),
-        }
-    }
-
-    fn send_command(
-        &mut self,
-        cmd: lpc55_isp::isp::CommandTag,
-        args: &[u32],
-    ) -> std::result::Result<(), lpc55_isp::isp::IspError> {
-        match self {
-            Interface::Usb(i) => i.send_command(cmd, args),
-            Interface::Serial(i) => i.send_command(cmd, args),
-        }
-    }
-
-    fn read_response(
-        &mut self,
-        response_type: lpc55_isp::isp::ResponseCode,
-    ) -> std::result::Result<Vec<u32>, lpc55_isp::isp::IspError> {
-        match self {
-            Interface::Usb(i) => i.read_response(response_type),
-            Interface::Serial(i) => i.read_response(response_type),
-        }
-    }
+#[derive(Copy, Clone, Debug, clap::ValueEnum)]
+enum InterfaceKind {
+    Serial,
+    Usb,
 }
 
 #[derive(Debug, Parser)]
 #[clap(name = "isp")]
 struct IspArgs {
-    #[arg(long)]
-    serial: Option<String>,
-    #[arg(long, conflicts_with = "serial")]
-    usb: Option<String>,
-    /// How fast to run the UART. 57,600 baud seems very reliable but is rather
-    /// slow. In certain test setups we've gotten rates of up to 1Mbaud to work
-    /// reliably -- your mileage may vary!
-    #[clap(short = 'b', default_value = "57600")]
-    baud_rate: u32,
+    /// A serial port name/path like COM1 or /dev/ttyUSB0 or usb selector
+    /// vid:pid[:bus@path-to-port] such as 1fc9:0021:001@7-22
+    #[arg(name = "port")]
+    port: Option<String>,
+    /// Type of connection to use
+    #[arg(value_enum, short, long, default_value_t = InterfaceKind::Serial)]
+    kind: InterfaceKind,
+    /// Baud rate for serial if not the default
+    #[clap(short = 'b')]
+    baud_rate: Option<u32>,
+    /// Command to run
     #[clap(subcommand)]
     cmd: ISPCommand,
 }
@@ -294,51 +253,27 @@ fn main() -> Result<()> {
 
     env_logger::init();
 
-    let mut port: Interface = if let Some(port) = cmd.serial {
-        // The target _technically_ has autobaud but it's very flaky
-        // and these seem to be the preferred settings
-        //
-        // We initially set the timeout short so we can drain the incoming buffer in
-        // a portable manner below. We'll adjust it up after that.
-        let mut port = serialport::new(&port, cmd.baud_rate)
-            .timeout(Duration::from_millis(100))
-            .data_bits(DataBits::Eight)
-            .flow_control(FlowControl::None)
-            .parity(Parity::None)
-            .stop_bits(StopBits::One)
-            .open()?;
+    if matches!(cmd.cmd, ISPCommand::List) {
+        println!("{}", list_interfaces()?);
+        return Ok(())
+    }
 
-        // Extract any bytes left over in the serial port driver from previous
-        // interaction.
-        loop {
-            let mut throwaway = [0; 16];
-            match port.read(&mut throwaway) {
-                Ok(0) => {
-                    // This should only happen on nonblocking reads, which we
-                    // haven't asked for, but it does mean the buffer is empty so
-                    // treat it as success.
-                    break;
-                }
-                Ok(_) => {
-                    // We've collected some characters to throw away, keep going.
-                }
-                Err(e) if e.kind() == ErrorKind::TimedOut => {
-                    // Buffer is empty!
-                    break;
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
-            }
-        }
-        // Crank the timeout back up.
-        port.set_timeout(Duration::from_secs(1))?;
-        Interface::Serial(port)
-    } else if let Some(port) = cmd.usb {
-        Interface::Usb(UsbIsp::new(&port.parse()?)?)
-    } else {
-        bail!("You must choose --serial or --usb");
+    if cmd.port.is_none() {
+        println!("{}", IspArgs::command().render_usage());
+        return Err(anyhow!("Port required"));
+    }
+
+    let options = match cmd.kind {
+        InterfaceKind::Serial => InterfaceOptions::Serial {
+            name: cmd.port.unwrap(),
+            baud_rate: cmd.baud_rate,
+        },
+        InterfaceKind::Usb => InterfaceOptions::Usb {
+            selector: cmd.port.unwrap().parse()?,
+        },
     };
+
+    let mut port = open_interface(options)?;
 
     match cmd.cmd {
         ISPCommand::Ping => {
@@ -446,8 +381,12 @@ fn main() -> Result<()> {
                     .context("reading CFPA ping page")?;
                 let pong = do_isp_read_memory(&mut port, 0x9e200, 512)
                     .context("reading CFPA pong page")?;
-                let ping_d = lpc55_areas::CFPAPage::from_bytes(ping[..].try_into().unwrap())?;
-                let pong_d = lpc55_areas::CFPAPage::from_bytes(pong[..].try_into().unwrap())?;
+                let ping_d = lpc55_areas::CFPAPage::from_bytes(
+                    ping[..].try_into().unwrap(),
+                )?;
+                let pong_d = lpc55_areas::CFPAPage::from_bytes(
+                    pong[..].try_into().unwrap(),
+                )?;
                 println!(
                     "CFPA versions: ping={}, pong={}",
                     ping_d.version, pong_d.version
@@ -484,8 +423,10 @@ fn main() -> Result<()> {
             // Read the CMPA so we can compare the two to try to avoid locking
             // the user out of their chip.
             let m = do_isp_read_memory(&mut port, 0x9e400, 512)?;
-            let cmpa = lpc55_areas::CMPAPage::from_bytes(m[..].try_into().unwrap())?;
-            if (new_cfpa.dcfg_cc_socu_ns_pin != 0 || new_cfpa.dcfg_cc_socu_ns_dflt != 0)
+            let cmpa =
+                lpc55_areas::CMPAPage::from_bytes(m[..].try_into().unwrap())?;
+            if (new_cfpa.dcfg_cc_socu_ns_pin != 0
+                || new_cfpa.dcfg_cc_socu_ns_dflt != 0)
                 && (cmpa.cc_socu_pin == 0 || cmpa.cc_socu_dflt == 0)
             {
                 bail!(
@@ -502,8 +443,12 @@ fn main() -> Result<()> {
                 let ping = do_isp_read_memory(&mut port, 0x9_e000, 512)?;
                 let pong = do_isp_read_memory(&mut port, 0x9_e200, 512)?;
 
-                let ping = lpc55_areas::CFPAPage::from_bytes(ping[..].try_into().unwrap())?;
-                let pong = lpc55_areas::CFPAPage::from_bytes(pong[..].try_into().unwrap())?;
+                let ping = lpc55_areas::CFPAPage::from_bytes(
+                    ping[..].try_into().unwrap(),
+                )?;
+                let pong = lpc55_areas::CFPAPage::from_bytes(
+                    pong[..].try_into().unwrap(),
+                )?;
 
                 println!(
                     "ping sector v={}, pong sector v={}",
@@ -531,15 +476,24 @@ fn main() -> Result<()> {
 
             // Choose a RAM address for the stack (we shouldn't use the stack
             // but it should be valid anyway)
-            byteorder::LittleEndian::write_u32(&mut bytes[0x0..0x4], 0x20004000);
+            byteorder::LittleEndian::write_u32(
+                &mut bytes[0x0..0x4],
+                0x20004000,
+            );
             // Everything else targets the loop to branch instruction at 0x00000130
             let mut offset = 4;
             while offset < 0x130 {
-                byteorder::LittleEndian::write_u32(&mut bytes[offset..offset + 4], 0x00000131);
+                byteorder::LittleEndian::write_u32(
+                    &mut bytes[offset..offset + 4],
+                    0x00000131,
+                );
                 offset += 4;
             }
             // This is two branch to self instructions
-            byteorder::LittleEndian::write_u32(&mut bytes[0x130..0x134], 0xe7fee7fe);
+            byteorder::LittleEndian::write_u32(
+                &mut bytes[0x130..0x134],
+                0xe7fee7fe,
+            );
 
             println!("Writing bytes");
             do_isp_write_memory(&mut port, 0x0, &bytes)?;
@@ -594,7 +548,8 @@ fn main() -> Result<()> {
         ISPCommand::SetSBKek { file } => {
             port.do_ping()?;
 
-            let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
+            let mut infile =
+                std::fs::OpenOptions::new().read(true).open(file)?;
 
             let mut raw_bytes = Vec::new();
 
@@ -619,7 +574,8 @@ fn main() -> Result<()> {
             do_generate_uds(&mut port)?;
 
             // Step 3: Set the SBKEK
-            let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
+            let mut infile =
+                std::fs::OpenOptions::new().read(true).open(file)?;
 
             let mut raw_bytes = Vec::new();
 
@@ -646,6 +602,9 @@ fn main() -> Result<()> {
             port.do_ping()?;
             let result = do_isp_last_error(&mut port)?;
             pretty_print_error(result);
+        }
+        ISPCommand::List => {
+            unreachable!() // we handle list above
         }
     }
 

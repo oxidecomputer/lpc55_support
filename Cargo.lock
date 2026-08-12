@@ -510,6 +510,7 @@ dependencies = [
  "crc-any",
  "env_logger",
  "hex",
+ "log",
  "lpc55_areas",
  "num-derive",
  "num-traits",
