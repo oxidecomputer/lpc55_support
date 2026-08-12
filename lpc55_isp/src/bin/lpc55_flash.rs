@@ -2,9 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use anyhow::{bail, Context, Result, anyhow};
+use anyhow::{anyhow, bail, Context, Result};
 use byteorder::ByteOrder;
-use clap::{Parser, CommandFactory};
+use clap::{CommandFactory, Parser};
 use lpc55_isp::cmd::*;
 use lpc55_isp::isp::{BootloaderProperty, Isp, KeyType};
 use lpc55_isp::util::*;
@@ -255,7 +255,7 @@ fn main() -> Result<()> {
 
     if matches!(cmd.cmd, ISPCommand::List) {
         println!("{}", list_interfaces()?);
-        return Ok(())
+        return Ok(());
     }
 
     if cmd.port.is_none() {

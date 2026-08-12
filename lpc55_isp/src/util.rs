@@ -152,7 +152,7 @@ pub fn list_interfaces() -> Result<InterfaceList> {
     }
     usb.sort_by_cached_key(|dev| dev.1.clone());
 
-    Ok(InterfaceList{serial, usb})
+    Ok(InterfaceList { serial, usb })
 }
 
 impl std::fmt::Display for InterfaceList {

@@ -86,7 +86,10 @@ pub fn do_generate_uds<P: Isp>(port: &mut P) -> Result<(), IspError> {
     Ok(())
 }
 
-pub fn do_isp_write_keystore<P: Isp>(port: &mut P, data: &[u8]) -> Result<(), IspError> {
+pub fn do_isp_write_keystore<P: Isp>(
+    port: &mut P,
+    data: &[u8],
+) -> Result<(), IspError> {
     do_command(
         port,
         CommandTag::KeyProvision,
@@ -101,7 +104,10 @@ pub fn do_isp_write_keystore<P: Isp>(port: &mut P, data: &[u8]) -> Result<(), Is
     Ok(())
 }
 
-pub fn do_recv_sb_file<P: Isp>(port: &mut P, data: &[u8]) -> Result<(), IspError> {
+pub fn do_recv_sb_file<P: Isp>(
+    port: &mut P,
+    data: &[u8],
+) -> Result<(), IspError> {
     do_command(
         port,
         CommandTag::ReceiveSbFile,
