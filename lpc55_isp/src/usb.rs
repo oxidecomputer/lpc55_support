@@ -28,10 +28,7 @@ pub enum ReportId {
     DataIn = 0x04,
 }
 
-pub fn require_packet_type(
-    frame: &FramingPacket,
-    ty: ReportId,
-) -> Result<(), IspError> {
+pub fn require_packet_type(frame: &FramingPacket, ty: ReportId) -> Result<(), IspError> {
     if frame.report_id != ty as u8 {
         return Err(IspError::WrongPacket {
             expected: ty as u8,
@@ -96,8 +93,7 @@ impl CommandPacket {
         // Total length of the command packet. the 4 bytes are for
         // the fixed fields
         // TODO check that length is less than max for USB
-        let len: u16 = u16::try_from(4 + arg_bytes)
-            .expect("args vec too long for command packet");
+        let len: u16 = u16::try_from(4 + arg_bytes).expect("args vec too long for command packet");
 
         v.packet.length_low = (len & 0xFF) as u8;
         v.packet.length_high = ((len >> 8) & 0xff) as u8;
@@ -129,8 +125,7 @@ pub struct DataPacket {
 impl DataPacket {
     fn new_data(args: impl Into<Vec<u8>>) -> DataPacket {
         let args = args.into();
-        let arg_len = u16::try_from(args.len())
-            .expect("args vector too long for DataPacket");
+        let arg_len = u16::try_from(args.len()).expect("args vector too long for DataPacket");
 
         let mut f = FramingPacket::new(ReportId::DataOut);
 
@@ -162,25 +157,18 @@ impl Isp for UsbIsp {
         Ok(())
     }
 
-    fn read_response(
-        &mut self,
-        response_type: ResponseCode,
-    ) -> Result<Vec<u32>, IspError> {
+    fn read_response(&mut self, response_type: ResponseCode) -> Result<Vec<u32>, IspError> {
         let frame_size = FramingPacket::packed_bytes_size(None).unwrap();
 
         let mut rx_bytes = vec![0; MAX_TX_SIZE];
         self.reader.read_exact(&mut rx_bytes)?;
 
-        let frame =
-            FramingPacket::unpack_from_slice(&rx_bytes[..frame_size]).unwrap();
+        let frame = FramingPacket::unpack_from_slice(&rx_bytes[..frame_size]).unwrap();
 
         // A response packet is a specific type of command packet.
         require_packet_type(&frame, ReportId::CommandIn)?;
 
-        let length: usize = usize::from(u16::from_le_bytes([
-            frame.length_low,
-            frame.length_high,
-        ]));
+        let length: usize = usize::from(u16::from_le_bytes([frame.length_low, frame.length_high]));
         let response = &rx_bytes[frame_size..frame_size + length];
 
         let command = RawCommand::unpack_from_slice(
@@ -201,12 +189,12 @@ impl Isp for UsbIsp {
         let index = RawCommand::packed_bytes_size(None).unwrap();
 
         let end_of_params = index + usize::from(command.parameter_count) * 4;
-        let param_bytes = response.get(index..end_of_params).ok_or(
-            IspError::TruncatedParams {
+        let param_bytes = response
+            .get(index..end_of_params)
+            .ok_or(IspError::TruncatedParams {
                 expected_len: end_of_params,
                 actual_len: response.len(),
-            },
-        )?;
+            })?;
 
         for p in param_bytes.chunks_exact(4) {
             params.push(u32::from_le_bytes(p.try_into().unwrap()));
@@ -222,11 +210,7 @@ impl Isp for UsbIsp {
         }
     }
 
-    fn send_command(
-        &mut self,
-        cmd: CommandTag,
-        args: &[u32],
-    ) -> Result<(), IspError> {
+    fn send_command(&mut self, cmd: CommandTag, args: &[u32]) -> Result<(), IspError> {
         let command_bytes = CommandPacket::new_command(cmd, args).to_bytes();
 
         self.writer.write_all(&command_bytes)?;
@@ -257,15 +241,12 @@ impl Isp for UsbIsp {
         while data.len() < cnt {
             self.reader.read_exact(&mut buffer)?;
 
-            let frame = FramingPacket::unpack_from_slice(&buffer[..frame_size])
-                .unwrap();
+            let frame = FramingPacket::unpack_from_slice(&buffer[..frame_size]).unwrap();
             // A response packet is a specific type of command packet.
             require_packet_type(&frame, ReportId::DataIn)?;
 
-            let length: usize = usize::from(u16::from_le_bytes([
-                frame.length_low,
-                frame.length_high,
-            ]));
+            let length: usize =
+                usize::from(u16::from_le_bytes([frame.length_low, frame.length_high]));
             let response = &buffer[frame_size..frame_size + length];
 
             data.extend_from_slice(response);
@@ -370,12 +351,10 @@ impl std::str::FromStr for DeviceSelector {
         }
         Ok(DeviceSelector {
             usb_id: Some(UsbId {
-                vendor_id: u16::from_str_radix(toks[0], 16).map_err(|_| {
-                    ParseError::InvalidVendorId(toks[0].to_owned())
-                })?,
-                product_id: u16::from_str_radix(toks[1], 16).map_err(|_| {
-                    ParseError::InvalidDeviceId(toks[1].to_owned())
-                })?,
+                vendor_id: u16::from_str_radix(toks[0], 16)
+                    .map_err(|_| ParseError::InvalidVendorId(toks[0].to_owned()))?,
+                product_id: u16::from_str_radix(toks[1], 16)
+                    .map_err(|_| ParseError::InvalidDeviceId(toks[1].to_owned()))?,
             }),
             location: if let Some(location) = toks.get(2) {
                 Some(location.parse()?)
@@ -392,14 +371,12 @@ impl UsbIsp {
             .wait()?
             .find(|dev| {
                 let id_match = if let Some(ref id_sel) = dev_sel.usb_id {
-                    dev.vendor_id() == id_sel.vendor_id
-                        && dev.product_id() == id_sel.product_id
+                    dev.vendor_id() == id_sel.vendor_id && dev.product_id() == id_sel.product_id
                 } else {
                     true
                 };
                 let port_match = if let Some(ref loc_sel) = dev_sel.location {
-                    loc_sel.bus_id == dev.bus_id()
-                        && loc_sel.port_chain == dev.port_chain()
+                    loc_sel.bus_id == dev.bus_id() && loc_sel.port_chain == dev.port_chain()
                 } else {
                     true
                 };

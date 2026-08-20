@@ -42,10 +42,7 @@ impl PacketHeader {
     }
 }
 
-pub fn require_packet_type(
-    frame: &FramingPacket,
-    ty: PacketType,
-) -> Result<(), IspError> {
+pub fn require_packet_type(frame: &FramingPacket, ty: PacketType) -> Result<(), IspError> {
     if frame.header.packet_type != ty as u8 {
         return Err(IspError::WrongPacket {
             expected: ty as u8,
@@ -127,8 +124,7 @@ impl CommandPacket {
         let arg_bytes = args.len() * 4;
         // Total length of the command packet. the 4 bytes are for
         // the fixed fields
-        let len: u16 = u16::try_from(4 + arg_bytes)
-            .expect("args vec too long for command packet");
+        let len: u16 = u16::try_from(4 + arg_bytes).expect("args vec too long for command packet");
 
         v.packet.length_low = (len & 0xFF) as u8;
         v.packet.length_high = ((len >> 8) & 0xff) as u8;
@@ -178,8 +174,7 @@ pub struct DataPacket {
 impl DataPacket {
     fn new_data(args: impl Into<Vec<u8>>) -> DataPacket {
         let args = args.into();
-        let arg_len = u16::try_from(args.len())
-            .expect("args vector too long for DataPacket");
+        let arg_len = u16::try_from(args.len()).expect("args vector too long for DataPacket");
 
         let mut f = FramingPacket::new(PacketType::Data);
 
@@ -254,16 +249,14 @@ fn read_ack<RW: Read + Write>(port: &mut RW) -> Result<(), IspError> {
 }
 
 fn read_data<RW: Read + Write>(port: &mut RW) -> Result<Vec<u8>, IspError> {
-    let mut frame_bytes =
-        vec![0; FramingPacket::packed_bytes_size(None).unwrap()];
+    let mut frame_bytes = vec![0; FramingPacket::packed_bytes_size(None).unwrap()];
     port.read_exact(&mut frame_bytes)?;
 
     let frame = FramingPacket::unpack_from_slice(&frame_bytes).unwrap();
 
     require_packet_type(&frame, PacketType::Data)?;
 
-    let length =
-        usize::from(u16::from_le_bytes([frame.length_low, frame.length_high]));
+    let length = usize::from(u16::from_le_bytes([frame.length_low, frame.length_high]));
     let mut response = vec![0; length];
     port.read_exact(&mut response)?;
 
@@ -272,11 +265,7 @@ fn read_data<RW: Read + Write>(port: &mut RW) -> Result<Vec<u8>, IspError> {
     Ok(response)
 }
 
-fn check_crc(
-    frame_bytes: &[u8],
-    response: &[u8],
-    frame: &FramingPacket,
-) -> Result<(), IspError> {
+fn check_crc(frame_bytes: &[u8], response: &[u8], frame: &FramingPacket) -> Result<(), IspError> {
     let mut crc = CRCu16::crc16xmodem();
     crc.digest(&frame_bytes[..0x4]);
     crc.digest(&frame_bytes[0x6..]);
@@ -310,8 +299,7 @@ impl<RW: Read + Write> Isp for RW {
 
         self.read_exact(&mut response_bytes)?;
 
-        let response =
-            PingResponse::unpack(&response_bytes).map_err(IspError::Unpack)?;
+        let response = PingResponse::unpack(&response_bytes).map_err(IspError::Unpack)?;
 
         if response.header.packet_type != (PacketType::PingResponse as u8) {
             return Err(IspError::BadAck(response.header.packet_type));
@@ -322,12 +310,8 @@ impl<RW: Read + Write> Isp for RW {
 
     // Okay _technically_ the response can return values from get-property but for
     // now just return (). If we _really_ need properties we can add that later
-    fn read_response(
-        &mut self,
-        response_type: ResponseCode,
-    ) -> Result<Vec<u32>, IspError> {
-        let mut frame_bytes =
-            vec![0; FramingPacket::packed_bytes_size(None).unwrap()];
+    fn read_response(&mut self, response_type: ResponseCode) -> Result<Vec<u32>, IspError> {
+        let mut frame_bytes = vec![0; FramingPacket::packed_bytes_size(None).unwrap()];
         self.read_exact(&mut frame_bytes)?;
 
         let frame = FramingPacket::unpack_from_slice(&frame_bytes).unwrap();
@@ -335,10 +319,7 @@ impl<RW: Read + Write> Isp for RW {
         // A response packet is a specific type of command packet.
         require_packet_type(&frame, PacketType::Command)?;
 
-        let length: usize = usize::from(u16::from_le_bytes([
-            frame.length_low,
-            frame.length_high,
-        ]));
+        let length: usize = usize::from(u16::from_le_bytes([frame.length_low, frame.length_high]));
         let mut response = vec![0; length];
         self.read_exact(&mut response)?;
 
@@ -362,12 +343,12 @@ impl<RW: Read + Write> Isp for RW {
         let index = RawCommand::packed_bytes_size(None).unwrap();
 
         let end_of_params = index + usize::from(command.parameter_count) * 4;
-        let param_bytes = response.get(index..end_of_params).ok_or(
-            IspError::TruncatedParams {
+        let param_bytes = response
+            .get(index..end_of_params)
+            .ok_or(IspError::TruncatedParams {
                 expected_len: end_of_params,
                 actual_len: response.len(),
-            },
-        )?;
+            })?;
 
         for p in param_bytes.chunks_exact(4) {
             params.push(u32::from_le_bytes(p.try_into().unwrap()));
@@ -385,11 +366,7 @@ impl<RW: Read + Write> Isp for RW {
         }
     }
 
-    fn send_command(
-        &mut self,
-        cmd: CommandTag,
-        args: &[u32],
-    ) -> Result<(), IspError> {
+    fn send_command(&mut self, cmd: CommandTag, args: &[u32]) -> Result<(), IspError> {
         let command_bytes = CommandPacket::new_command(cmd, args).to_bytes();
 
         self.write_all(&command_bytes)?;

@@ -322,11 +322,7 @@ fn main() -> Result<()> {
         } => {
             port.do_ping()?;
 
-            do_isp_flash_erase_region(
-                &mut port,
-                start_address,
-                byte_count,
-            )?;
+            do_isp_flash_erase_region(&mut port, start_address, byte_count)?;
 
             println!("Flash region erased!");
         }
@@ -386,12 +382,8 @@ fn main() -> Result<()> {
                     .context("reading CFPA ping page")?;
                 let pong = do_isp_read_memory(&mut port, 0x9e200, 512)
                     .context("reading CFPA pong page")?;
-                let ping_d = lpc55_areas::CFPAPage::from_bytes(
-                    ping[..].try_into().unwrap(),
-                )?;
-                let pong_d = lpc55_areas::CFPAPage::from_bytes(
-                    pong[..].try_into().unwrap(),
-                )?;
+                let ping_d = lpc55_areas::CFPAPage::from_bytes(ping[..].try_into().unwrap())?;
+                let pong_d = lpc55_areas::CFPAPage::from_bytes(pong[..].try_into().unwrap())?;
                 println!(
                     "CFPA versions: ping={}, pong={}",
                     ping_d.version, pong_d.version
@@ -422,19 +414,14 @@ fn main() -> Result<()> {
 
             let bytes = std::fs::read(file)?;
             let mut new_cfpa = lpc55_areas::CFPAPage::from_bytes(
-                bytes[..]
-                    .try_into()
-                    .context("CFPA file is not 512 bytes")?,
+                bytes[..].try_into().context("CFPA file is not 512 bytes")?,
             )?;
 
             // Read the CMPA so we can compare the two to try to avoid locking
             // the user out of their chip.
             let m = do_isp_read_memory(&mut port, 0x9e400, 512)?;
-            let cmpa = lpc55_areas::CMPAPage::from_bytes(
-                m[..].try_into().unwrap(),
-            )?;
-            if (new_cfpa.dcfg_cc_socu_ns_pin != 0
-                || new_cfpa.dcfg_cc_socu_ns_dflt != 0)
+            let cmpa = lpc55_areas::CMPAPage::from_bytes(m[..].try_into().unwrap())?;
+            if (new_cfpa.dcfg_cc_socu_ns_pin != 0 || new_cfpa.dcfg_cc_socu_ns_dflt != 0)
                 && (cmpa.cc_socu_pin == 0 || cmpa.cc_socu_dflt == 0)
             {
                 bail!(
@@ -451,12 +438,8 @@ fn main() -> Result<()> {
                 let ping = do_isp_read_memory(&mut port, 0x9_e000, 512)?;
                 let pong = do_isp_read_memory(&mut port, 0x9_e200, 512)?;
 
-                let ping = lpc55_areas::CFPAPage::from_bytes(
-                    ping[..].try_into().unwrap(),
-                )?;
-                let pong = lpc55_areas::CFPAPage::from_bytes(
-                    pong[..].try_into().unwrap(),
-                )?;
+                let ping = lpc55_areas::CFPAPage::from_bytes(ping[..].try_into().unwrap())?;
+                let pong = lpc55_areas::CFPAPage::from_bytes(pong[..].try_into().unwrap())?;
 
                 println!(
                     "ping sector v={}, pong sector v={}",
@@ -484,24 +467,15 @@ fn main() -> Result<()> {
 
             // Choose a RAM address for the stack (we shouldn't use the stack
             // but it should be valid anyway)
-            byteorder::LittleEndian::write_u32(
-                &mut bytes[0x0..0x4],
-                0x20004000,
-            );
+            byteorder::LittleEndian::write_u32(&mut bytes[0x0..0x4], 0x20004000);
             // Everything else targets the loop to branch instruction at 0x00000130
             let mut offset = 4;
             while offset < 0x130 {
-                byteorder::LittleEndian::write_u32(
-                    &mut bytes[offset..offset + 4],
-                    0x00000131,
-                );
+                byteorder::LittleEndian::write_u32(&mut bytes[offset..offset + 4], 0x00000131);
                 offset += 4;
             }
             // This is two branch to self instructions
-            byteorder::LittleEndian::write_u32(
-                &mut bytes[0x130..0x134],
-                0xe7fee7fe,
-            );
+            byteorder::LittleEndian::write_u32(&mut bytes[0x130..0x134], 0xe7fee7fe);
 
             println!("Writing bytes");
             do_isp_write_memory(&mut port, 0x0, &bytes)?;
@@ -556,8 +530,7 @@ fn main() -> Result<()> {
         ISPCommand::SetSBKek { file } => {
             port.do_ping()?;
 
-            let mut infile =
-                std::fs::OpenOptions::new().read(true).open(file)?;
+            let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
 
             let mut raw_bytes = Vec::new();
 
@@ -582,8 +555,7 @@ fn main() -> Result<()> {
             do_generate_uds(&mut port)?;
 
             // Step 3: Set the SBKEK
-            let mut infile =
-                std::fs::OpenOptions::new().read(true).open(file)?;
+            let mut infile = std::fs::OpenOptions::new().read(true).open(file)?;
 
             let mut raw_bytes = Vec::new();
 

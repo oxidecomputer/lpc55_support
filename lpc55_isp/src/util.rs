@@ -35,21 +35,14 @@ impl Isp for Interface {
         }
     }
 
-    fn recv_data(
-        &mut self,
-        cnt: u32,
-    ) -> std::result::Result<Vec<u8>, IspError> {
+    fn recv_data(&mut self, cnt: u32) -> std::result::Result<Vec<u8>, IspError> {
         match self {
             Interface::Usb(i) => i.recv_data(cnt),
             Interface::Serial(i) => i.recv_data(cnt),
         }
     }
 
-    fn send_command(
-        &mut self,
-        cmd: CommandTag,
-        args: &[u32],
-    ) -> std::result::Result<(), IspError> {
+    fn send_command(&mut self, cmd: CommandTag, args: &[u32]) -> std::result::Result<(), IspError> {
         match self {
             Interface::Usb(i) => i.send_command(cmd, args),
             Interface::Serial(i) => i.send_command(cmd, args),
@@ -113,9 +106,7 @@ pub fn open_interface(interface: InterfaceOptions) -> Result<Interface> {
             port.set_timeout(Duration::from_secs(1))?;
             Ok(Interface::Serial(port))
         }
-        InterfaceOptions::Usb { selector } => {
-            Ok(Interface::Usb(UsbIsp::new(&selector)?))
-        }
+        InterfaceOptions::Usb { selector } => Ok(Interface::Usb(UsbIsp::new(&selector)?)),
     }
 }
 

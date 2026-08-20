@@ -103,15 +103,8 @@ impl RawCommand {
 
 pub trait Isp {
     fn do_ping(&mut self) -> Result<(), IspError>;
-    fn read_response(
-        &mut self,
-        response_type: ResponseCode,
-    ) -> Result<Vec<u32>, IspError>;
-    fn send_command(
-        &mut self,
-        cmd: CommandTag,
-        args: &[u32],
-    ) -> Result<(), IspError>;
+    fn read_response(&mut self, response_type: ResponseCode) -> Result<Vec<u32>, IspError>;
+    fn send_command(&mut self, cmd: CommandTag, args: &[u32]) -> Result<(), IspError>;
     fn send_data(&mut self, data: &[u8]) -> Result<(), IspError>;
     fn recv_data(&mut self, cnt: u32) -> Result<Vec<u8>, IspError>;
 }
@@ -206,9 +199,7 @@ pub enum StatusResponse {
 /// messages.
 ///
 /// See LPC55 User Manual chapter 8.7 table 251 for more.
-#[derive(
-    Debug, FromPrimitive, Copy, Clone, Eq, PartialEq, ToPrimitive, Error,
-)]
+#[derive(Debug, FromPrimitive, Copy, Clone, Eq, PartialEq, ToPrimitive, Error)]
 pub enum KnownError {
     #[error("Cumulative write error (did you forget to erase?) (err 10203)")]
     CumulativeWriteError = 10203,
