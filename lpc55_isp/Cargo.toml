@@ -1,6 +1,6 @@
 [package]
 name = "lpc55_isp"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -10,10 +10,13 @@ anyhow.workspace = true
 byteorder.workspace = true
 clap.workspace = true
 crc-any.workspace = true
+env_logger.workspace = true
 hex.workspace = true
+log.workspace = true
 lpc55_areas.workspace = true
 num-derive.workspace = true
 num-traits.workspace = true
+nusb.workspace = true
 packed_struct.workspace = true
 parse_int.workspace = true
 serialport.workspace = true
